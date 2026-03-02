@@ -1,9 +1,13 @@
 import type { Server as HttpServer } from "node:http";
 import { WebSocketServer } from "ws";
+import type { AcppHttpContext } from "../acpp/acpp-http.js";
+import { ActivityAggregator } from "../acpp/activity-aggregator.js";
+import { AgentStore } from "../acpp/agent-store.js";
+import { AgentHealthPoller } from "../acpp/health-poller.js";
 import { CANVAS_HOST_PATH } from "../canvas-host/a2ui.js";
 import { type CanvasHostHandler, createCanvasHostHandler } from "../canvas-host/server.js";
 import type { CliDeps } from "../cli/deps.js";
-import type { createSubsystemLogger } from "../logging/subsystem.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { PluginRegistry } from "../plugins/registry.js";
 import type { RuntimeEnv } from "../runtime.js";
 import type { AuthRateLimiter } from "./auth-rate-limit.js";
@@ -136,6 +140,41 @@ export async function createGatewayRuntimeState(params: {
         "Host-header origin fallback weakens origin checks and should only be used as break-glass.",
     );
   }
+  const acppApiKey = process.env.ACPP_API_KEY;
+  const acppHeartbeatIntervalMs =
+    parseInt(process.env.ACPP_HEARTBEAT_INTERVAL_MS ?? "30000", 10) || 30_000;
+  const acppHealthPollIntervalMs =
+    parseInt(process.env.ACPP_HEALTH_POLL_INTERVAL_MS ?? "60000", 10) || 60_000;
+
+  let acppContext: AcppHttpContext | undefined;
+  let _acppHeartbeatTimer: ReturnType<typeof setInterval> | undefined;
+
+  if (acppApiKey) {
+    const logAcpp = createSubsystemLogger("acpp");
+    const agentStore = new AgentStore({ heartbeatIntervalMs: acppHeartbeatIntervalMs });
+    const healthPoller = new AgentHealthPoller(logAcpp);
+    const activityAggregator = new ActivityAggregator(logAcpp);
+
+    healthPoller.start(agentStore, acppHealthPollIntervalMs);
+    _acppHeartbeatTimer = setInterval(() => {
+      const transitions = agentStore.checkMissedHeartbeats();
+      for (const t of transitions) {
+        logAcpp.info(`agent ${t.agentId}: ${t.from} → ${t.to}`);
+      }
+    }, acppHeartbeatIntervalMs);
+
+    acppContext = {
+      store: agentStore,
+      apiKey: acppApiKey,
+      log: logAcpp,
+      healthPoller,
+      activityAggregator,
+    };
+    logAcpp.info(
+      `ACPP module enabled (heartbeat: ${acppHeartbeatIntervalMs}ms, health poll: ${acppHealthPollIntervalMs}ms)`,
+    );
+  }
+
   const httpServers: HttpServer[] = [];
   const httpBindHosts: string[] = [];
   for (const host of bindHosts) {
@@ -155,6 +194,7 @@ export async function createGatewayRuntimeState(params: {
       resolvedAuth: params.resolvedAuth,
       rateLimiter: params.rateLimiter,
       tlsOptions: params.gatewayTls?.enabled ? params.gatewayTls.tlsOptions : undefined,
+      acppContext,
     });
     try {
       await listenGatewayHttpServer({

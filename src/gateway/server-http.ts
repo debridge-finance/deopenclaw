@@ -7,6 +7,7 @@ import {
 import { createServer as createHttpsServer } from "node:https";
 import type { TlsOptions } from "node:tls";
 import type { WebSocketServer } from "ws";
+import { handleAcppHttpRequest, type AcppHttpContext } from "../acpp/acpp-http.js";
 import { resolveAgentAvatar } from "../agents/identity-avatar.js";
 import { CANVAS_WS_PATH, handleA2uiHttpRequest } from "../canvas-host/a2ui.js";
 import type { CanvasHostHandler } from "../canvas-host/server.js";
@@ -458,6 +459,7 @@ export function createGatewayHttpServer(opts: {
   /** Optional rate limiter for auth brute-force protection. */
   rateLimiter?: AuthRateLimiter;
   tlsOptions?: TlsOptions;
+  acppContext?: AcppHttpContext;
 }): HttpServer {
   const {
     canvasHost,
@@ -529,6 +531,13 @@ export function createGatewayHttpServer(opts: {
           run: () => handleSlackHttpRequest(req, res),
         },
       ];
+      if (opts.acppContext) {
+        const acppCtx = opts.acppContext;
+        requestStages.push({
+          name: "acpp",
+          run: () => handleAcppHttpRequest(req, res, acppCtx),
+        });
+      }
       if (openResponsesEnabled) {
         requestStages.push({
           name: "openresponses",
