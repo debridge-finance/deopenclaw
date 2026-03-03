@@ -348,6 +348,18 @@ export class OpenClawApp extends LitElement {
   @state() skillsBusyKey: string | null = null;
   @state() skillMessages: Record<string, SkillMessage> = {};
 
+  // ── ACPP Registry ──────────────────────────────────────
+  @state() acppRegistryLoading = false;
+  @state() acppRegistryError: string | null = null;
+  @state() acppRegistryAgents: import("./types/acpp-types.js").AcppAgentSummary[] = [];
+  @state() acppRegistrySelected: string | null = null;
+  @state() acppRegistryDetail: import("./types/acpp-types.js").AcppAgentDetail | null = null;
+  @state() acppRegistryDetailLoading = false;
+  @state() acppRegistryHealth: import("./types/acpp-types.js").AcppHealthResult | null = null;
+  @state() acppRegistryHealthLoading = false;
+  @state() acppRegistryActivity: import("./types/acpp-types.js").AcppActivityEvent[] = [];
+  @state() acppRegistryActivityLoading = false;
+
   @state() debugLoading = false;
   @state() debugStatus: StatusSummary | null = null;
   @state() debugHealth: HealthSnapshot | null = null;

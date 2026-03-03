@@ -3,7 +3,7 @@ import {
   HeartbeatSchema,
   type RegistrationResponse,
   type HeartbeatResponse,
-} from "@debridge/acpp-contracts";
+} from "@debridge-finance/acpp-contracts";
 import type { AgentRecord, AgentStatus } from "./types.js";
 
 export type AgentStoreOptions = {

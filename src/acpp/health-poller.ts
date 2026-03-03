@@ -1,4 +1,4 @@
-import { HealthResponseSchema, type HealthResponse } from "@debridge/acpp-contracts";
+import { HealthResponseSchema, type HealthResponse } from "@debridge-finance/acpp-contracts";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
 import type { AgentStore } from "./agent-store.js";
 

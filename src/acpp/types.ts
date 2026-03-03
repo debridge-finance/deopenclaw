@@ -1,4 +1,4 @@
-import type { AgentRegistration, AgentState } from "@debridge/acpp-contracts";
+import type { AgentRegistration, AgentState } from "@debridge-finance/acpp-contracts";
 
 // ── Agent Status ──────────────────────────────────────────────
 

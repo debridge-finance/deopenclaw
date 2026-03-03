@@ -255,6 +255,17 @@ export type AppViewState = {
     logsMaxBytes: number;
     logsAtBottom: boolean;
     updateAvailable: import("./types.js").UpdateAvailable | null;
+    // ACPP Registry
+    acppRegistryLoading: boolean;
+    acppRegistryError: string | null;
+    acppRegistryAgents: import("./types/acpp-types.js").AcppAgentSummary[];
+    acppRegistrySelected: string | null;
+    acppRegistryDetail: import("./types/acpp-types.js").AcppAgentDetail | null;
+    acppRegistryDetailLoading: boolean;
+    acppRegistryHealth: import("./types/acpp-types.js").AcppHealthResult | null;
+    acppRegistryHealthLoading: boolean;
+    acppRegistryActivity: import("./types/acpp-types.js").AcppActivityEvent[];
+    acppRegistryActivityLoading: boolean;
     client: GatewayBrowserClient | null;
     refreshSessionsAfterChat: Set<string>;
     connect: () => void;

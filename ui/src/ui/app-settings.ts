@@ -26,6 +26,7 @@ import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
 import { loadSessions } from "./controllers/sessions.ts";
 import { loadSkills } from "./controllers/skills.ts";
+import { loadAcppAgents } from "./controllers/acpp-registry.ts";
 import {
   inferBasePathFromPathname,
   normalizeBasePath,
@@ -59,6 +60,7 @@ type SettingsHost = {
   themeMedia: MediaQueryList | null;
   themeMediaHandler: ((event: MediaQueryListEvent) => void) | null;
   pendingGatewayUrl?: string | null;
+  acppRefreshTimer?: ReturnType<typeof setInterval> | null;
 };
 
 export function applySettings(host: SettingsHost, next: UiSettings) {
@@ -234,6 +236,9 @@ export async function refreshActiveTab(host: SettingsHost) {
     await loadLogs(host as unknown as OpenClawApp, { reset: true });
     scheduleLogsScroll(host as unknown as Parameters<typeof scheduleLogsScroll>[0], true);
   }
+  if (host.tab === "registry") {
+    await loadAcppAgents(host as unknown as OpenClawApp);
+  }
 }
 
 export function inferBasePath() {
@@ -355,6 +360,17 @@ function applyTabSelection(
     startDebugPolling(host as unknown as Parameters<typeof startDebugPolling>[0]);
   } else {
     stopDebugPolling(host as unknown as Parameters<typeof stopDebugPolling>[0]);
+  }
+  // ACPP Registry auto-refresh (30s while tab is active)
+  if (next === "registry") {
+    if (!host.acppRefreshTimer) {
+      host.acppRefreshTimer = setInterval(() => {
+        void loadAcppAgents(host as unknown as OpenClawApp);
+      }, 30_000);
+    }
+  } else if (host.acppRefreshTimer) {
+    clearInterval(host.acppRefreshTimer);
+    host.acppRefreshTimer = null;
   }
 
   if (options.refreshPolicy === "always" || host.connected) {

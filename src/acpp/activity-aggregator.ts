@@ -1,4 +1,4 @@
-import { ActivityEventSchema, type ActivityEvent } from "@debridge/acpp-contracts";
+import { ActivityEventSchema, type ActivityEvent } from "@debridge-finance/acpp-contracts";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
