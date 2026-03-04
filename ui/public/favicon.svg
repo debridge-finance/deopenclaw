@@ -4,19 +4,32 @@
       <stop offset="0%" stop-color="#ff4d4d"/>
       <stop offset="100%" stop-color="#991b1b"/>
     </linearGradient>
+    <linearGradient id="debridge-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#9AB520"/>
+      <stop offset="100%" stop-color="#D4E157"/>
+    </linearGradient>
   </defs>
+  <!-- deBridge fan/wing behind lobster -->
+  <g opacity="0.85" transform="translate(60,58) rotate(-15)">
+    <path d="M0,0 L-8,-42 A42,42 0 0,1 8,-42 Z" fill="url(#debridge-gradient)" opacity="0.6"/>
+    <path d="M0,0 L10,-40 A42,42 0 0,1 26,-34 Z" fill="url(#debridge-gradient)" opacity="0.7"/>
+    <path d="M0,0 L26,-30 A42,42 0 0,1 38,-18 Z" fill="url(#debridge-gradient)" opacity="0.8"/>
+    <path d="M0,0 L36,-14 A42,42 0 0,1 42,0 Z" fill="url(#debridge-gradient)" opacity="0.9"/>
+    <path d="M0,0 L-26,-30 A42,42 0 0,0 -38,-18 Z" fill="url(#debridge-gradient)" opacity="0.7"/>
+    <path d="M0,0 L-36,-14 A42,42 0 0,0 -42,0 Z" fill="url(#debridge-gradient)" opacity="0.8"/>
+  </g>
   <!-- Body -->
-  <path d="M60 10 C30 10 15 35 15 55 C15 75 30 95 45 100 L45 110 L55 110 L55 100 C55 100 60 102 65 100 L65 110 L75 110 L75 100 C90 95 105 75 105 55 C105 35 90 10 60 10Z" fill="url(#lobster-gradient)"/>
+  <path d="M60 18 C35 18 22 38 22 55 C22 72 35 88 47 92 L47 100 L54 100 L54 93 C54 93 58 95 64 93 L64 100 L71 100 L71 92 C83 88 96 72 96 55 C96 38 83 18 60 18Z" fill="url(#lobster-gradient)"/>
   <!-- Left Claw -->
-  <path d="M20 45 C5 40 0 50 5 60 C10 70 20 65 25 55 C28 48 25 45 20 45Z" fill="url(#lobster-gradient)"/>
+  <path d="M26 48 C14 44 9 52 13 60 C17 68 26 63 29 55 C31 49 29 47 26 48Z" fill="url(#lobster-gradient)"/>
   <!-- Right Claw -->
-  <path d="M100 45 C115 40 120 50 115 60 C110 70 100 65 95 55 C92 48 95 45 100 45Z" fill="url(#lobster-gradient)"/>
+  <path d="M94 48 C106 44 111 52 107 60 C103 68 94 63 91 55 C89 49 91 47 94 48Z" fill="url(#lobster-gradient)"/>
   <!-- Antenna -->
-  <path d="M45 15 Q35 5 30 8" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round"/>
-  <path d="M75 15 Q85 5 90 8" stroke="#ff4d4d" stroke-width="3" stroke-linecap="round"/>
+  <path d="M48 22 Q40 14 36 16" stroke="#ff4d4d" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M72 22 Q80 14 84 16" stroke="#ff4d4d" stroke-width="2.5" stroke-linecap="round"/>
   <!-- Eyes -->
-  <circle cx="45" cy="35" r="6" fill="#050810"/>
-  <circle cx="75" cy="35" r="6" fill="#050810"/>
-  <circle cx="46" cy="34" r="2.5" fill="#BFD630"/>
-  <circle cx="76" cy="34" r="2.5" fill="#BFD630"/>
+  <circle cx="48" cy="40" r="5.5" fill="#050810"/>
+  <circle cx="72" cy="40" r="5.5" fill="#050810"/>
+  <circle cx="49" cy="39" r="2.2" fill="#BFD630"/>
+  <circle cx="73" cy="39" r="2.2" fill="#BFD630"/>
 </svg>
