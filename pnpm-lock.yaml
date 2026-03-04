@@ -34,8 +34,8 @@ importers:
         specifier: ^1.0.1
         version: 1.0.1
       '@debridge-finance/acpp-contracts':
-        specifier: ^0.1.0
-        version: 0.1.0(zod@4.3.6)
+        specifier: ^0.2.0
+        version: 0.2.0(zod@4.3.6)
       '@discordjs/voice':
         specifier: ^0.19.0
         version: 0.19.0(@discordjs/opus@0.10.0)(opusscript@0.1.1)
@@ -939,8 +939,8 @@ packages:
   '@d-fischer/typed-event-emitter@3.3.3':
     resolution: {integrity: sha512-OvSEOa8icfdWDqcRtjSEZtgJTFOFNgTjje7zaL0+nAtu2/kZtRCSK5wUMrI/aXtCH8o0Qz2vA8UqkhWUTARFQQ==}
 
-  '@debridge-finance/acpp-contracts@0.1.0':
-    resolution: {integrity: sha512-68jP7j8Tf7MXZPO1EWhokcg2rrn784ny6fIPU7Bt7cyOTsKJFluZlOb0XL5BriZrXyRptGnaUhv2gE0iSIU/2A==, tarball: https://npm.pkg.github.com/download/@debridge-finance/acpp-contracts/0.1.0/8cd705086574cc05aa1490405eeb9a8ea4cd7e46}
+  '@debridge-finance/acpp-contracts@0.2.0':
+    resolution: {integrity: sha512-0InquvvAR7n75pLkqiqBNzdyDRtKJbGdnfuh5bMbm6A474QFJAzycRtWCQA1rJssjwzE9tywUMqQ913WzzZv8Q==, tarball: https://npm.pkg.github.com/download/@debridge-finance/acpp-contracts/0.2.0/fdb3a606cb24166e8fc0ab779e0df191d88ecc24}
     peerDependencies:
       zod: ^3.24.0
 
@@ -7127,7 +7127,7 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@debridge-finance/acpp-contracts@0.1.0(zod@4.3.6)':
+  '@debridge-finance/acpp-contracts@0.2.0(zod@4.3.6)':
     dependencies:
       zod: 4.3.6
 
