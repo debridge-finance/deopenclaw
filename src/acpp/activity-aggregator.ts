@@ -85,10 +85,16 @@ export class ActivityAggregator {
     const all: Array<ActivityEvent & { agentId: string }> = [];
     for (const [agentId, buffer] of this.buffers) {
       for (const event of buffer) {
-        all.push({ ...event, agentId });
+        all.push({ ...(event as Record<string, unknown>), agentId } as ActivityEvent & {
+          agentId: string;
+        });
       }
     }
-    all.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    all.sort((a, b) =>
+      (b as unknown as { timestamp: string }).timestamp.localeCompare(
+        (a as unknown as { timestamp: string }).timestamp,
+      ),
+    );
     return all.slice(0, limit);
   }
 
