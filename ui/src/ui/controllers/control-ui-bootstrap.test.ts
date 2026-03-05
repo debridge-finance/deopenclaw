@@ -22,6 +22,7 @@ describe("loadControlUiBootstrapConfig", () => {
       assistantName: "Assistant",
       assistantAvatar: null,
       assistantAgentId: null,
+      settings: { acppApiKey: "" },
     };
 
     await loadControlUiBootstrapConfig(state);
@@ -46,6 +47,7 @@ describe("loadControlUiBootstrapConfig", () => {
       assistantName: "Assistant",
       assistantAvatar: null,
       assistantAgentId: null,
+      settings: { acppApiKey: "" },
     };
 
     await loadControlUiBootstrapConfig(state);
@@ -68,6 +70,7 @@ describe("loadControlUiBootstrapConfig", () => {
       assistantName: "Assistant",
       assistantAvatar: null,
       assistantAgentId: null,
+      settings: { acppApiKey: "" },
     };
 
     await loadControlUiBootstrapConfig(state);

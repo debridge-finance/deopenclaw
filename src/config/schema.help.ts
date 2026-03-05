@@ -188,6 +188,13 @@ export const FIELD_HELP: Record<string, string> = {
     "Idle runtime TTL in minutes for ACP session workers before eligible cleanup.",
   "acp.runtime.installCommand":
     "Optional operator install/setup command shown by `/acp install` and `/acp doctor` when ACP backend wiring is missing.",
+  acpp: "ACPP (Agent Communication and Presence Protocol) settings for agent registry, health polling, and heartbeat configuration.",
+  "acpp.apiKey":
+    "Shared API key required for ACPP agent registration and health endpoints. Agents send this key in X-API-Key header when registering with the gateway. Falls back to ACPP_API_KEY env var.",
+  "acpp.heartbeatIntervalMs":
+    "Interval in milliseconds between agent heartbeat checks. Agents that miss heartbeats transition to OFFLINE status (default: 30000).",
+  "acpp.healthPollIntervalMs":
+    "Interval in milliseconds between active health probes sent to registered agents (default: 60000).",
   "agents.list.*.skills":
     "Optional allowlist of skills for this agent (omit = all skills; empty = no skills).",
   "agents.list[].skills":

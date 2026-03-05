@@ -332,6 +332,7 @@ export function handleControlUiHttpRequest(
       assistantName: identity.name,
       assistantAvatar: avatarValue ?? identity.avatar,
       assistantAgentId: identity.agentId,
+      ...(process.env.ACPP_API_KEY ? { acppApiKey: process.env.ACPP_API_KEY } : {}),
     } satisfies ControlUiBootstrapConfig);
     return true;
   }

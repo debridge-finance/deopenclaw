@@ -140,11 +140,13 @@ export async function createGatewayRuntimeState(params: {
         "Host-header origin fallback weakens origin checks and should only be used as break-glass.",
     );
   }
-  const acppApiKey = process.env.ACPP_API_KEY;
+  const acppApiKey = params.cfg.acpp?.apiKey ?? process.env.ACPP_API_KEY;
   const acppHeartbeatIntervalMs =
-    parseInt(process.env.ACPP_HEARTBEAT_INTERVAL_MS ?? "30000", 10) || 30_000;
+    params.cfg.acpp?.heartbeatIntervalMs ??
+    (parseInt(process.env.ACPP_HEARTBEAT_INTERVAL_MS ?? "30000", 10) || 30_000);
   const acppHealthPollIntervalMs =
-    parseInt(process.env.ACPP_HEALTH_POLL_INTERVAL_MS ?? "60000", 10) || 60_000;
+    params.cfg.acpp?.healthPollIntervalMs ??
+    (parseInt(process.env.ACPP_HEALTH_POLL_INTERVAL_MS ?? "60000", 10) || 60_000);
 
   let acppContext: AcppHttpContext | undefined;
   let _acppHeartbeatTimer: ReturnType<typeof setInterval> | undefined;

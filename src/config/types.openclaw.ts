@@ -36,6 +36,14 @@ export type OpenClawConfig = {
   };
   auth?: AuthConfig;
   acp?: AcpConfig;
+  acpp?: {
+    /** Shared API key for ACPP agent registration and health endpoints. */
+    apiKey?: string;
+    /** Heartbeat check interval in milliseconds (default: 30000). */
+    heartbeatIntervalMs?: number;
+    /** Health poll interval in milliseconds (default: 60000). */
+    healthPollIntervalMs?: number;
+  };
   env?: {
     /** Opt-in: import missing secrets from a login shell environment (exec `$SHELL -l -c 'env -0'`). */
     shellEnv?: {

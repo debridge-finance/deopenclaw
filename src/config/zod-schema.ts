@@ -369,6 +369,14 @@ export const OpenClawSchema = z
       })
       .strict()
       .optional(),
+    acpp: z
+      .object({
+        apiKey: z.string().optional().register(sensitive),
+        heartbeatIntervalMs: z.number().int().positive().optional(),
+        healthPollIntervalMs: z.number().int().positive().optional(),
+      })
+      .strict()
+      .optional(),
     models: ModelsConfigSchema,
     nodeHost: NodeHostSchema,
     agents: AgentsSchema,
