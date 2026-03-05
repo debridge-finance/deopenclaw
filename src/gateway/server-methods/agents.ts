@@ -409,6 +409,9 @@ export const agentsHandlers: GatewayRequestHandlers = {
           identity: {
             name: agent.name || agent.agentId,
           },
+          description: agent.description,
+          systemInstruction:
+            ((agent as Record<string, unknown>).identity as string) || agent.description,
         });
       }
     }

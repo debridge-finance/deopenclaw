@@ -170,6 +170,9 @@ export async function createGatewayRuntimeState(params: {
 
     const mcpClientManager = new McpClientManager(logAcpp);
     mcpClientManager.init(acppAgentStore, activityAggregator);
+    // Register singleton so tool-creation code (pi-tools) can access MCP proxy tools
+    const { setGlobalMcpClientManager } = await import("../acpp/mcp-client-singleton.js");
+    setGlobalMcpClientManager(mcpClientManager);
 
     acppContext = {
       store: acppAgentStore,

@@ -57,6 +57,45 @@ import {
 } from "./tool-policy.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
+/**
+ * Resolve ACPP proxy tools for an agent session.
+ * If the session key matches `agent:<agentId>:acp:*`, look up the agent's
+ * MCP tools from the global McpClientManager and create proxy tool wrappers.
+ */
+function resolveAcppProxyTools(sessionKey?: string): AnyAgentTool[] {
+  if (!sessionKey) {
+    return [];
+  }
+  // Match ACP session key pattern: agent:<agentId>:acp:<uuid>
+  const match = sessionKey.match(/^agent:([^:]+):acp:/);
+  if (!match) {
+    return [];
+  }
+  const acppAgentId = match[1];
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getGlobalMcpClientManager } = require("../acpp/mcp-client-singleton.js") as {
+      getGlobalMcpClientManager: () =>
+        | import("../acpp/mcp-client-manager.js").McpClientManager
+        | null;
+    };
+    const { createAcppProxyTools } = require("../acpp/acpp-tool-proxy.js") as {
+      createAcppProxyTools: typeof import("../acpp/acpp-tool-proxy.js").createAcppProxyTools;
+    };
+    const manager = getGlobalMcpClientManager();
+    if (!manager) {
+      return [];
+    }
+    const mcpTools = manager.getAgentTools(acppAgentId);
+    if (mcpTools.length === 0) {
+      return [];
+    }
+    return createAcppProxyTools(acppAgentId, mcpTools, manager) as unknown as AnyAgentTool[];
+  } catch {
+    return [];
+  }
+}
+
 function isOpenAIProvider(provider?: string) {
   const normalized = provider?.trim().toLowerCase();
   return normalized === "openai" || normalized === "openai-codex";
@@ -494,6 +533,8 @@ export function createOpenClawCodingTools(options?: {
       requesterSenderId: options?.senderId,
       senderIsOwner: options?.senderIsOwner,
     }),
+    // Inject ACPP agent MCP proxy tools for ACP sessions
+    ...resolveAcppProxyTools(options?.sessionKey),
   ];
   const toolsForMessageProvider = applyMessageProviderToolPolicy(tools, options?.messageProvider);
   // Security: treat unknown/undefined as unauthorized (opt-in, not opt-out)
