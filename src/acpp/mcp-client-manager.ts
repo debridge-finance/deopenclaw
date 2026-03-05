@@ -241,6 +241,7 @@ export class McpClientManager {
 
   /**
    * Send MCP `initialize` JSON-RPC request to set up the session.
+   * Handles `Server already initialized` gracefully for stateful transports.
    */
   private async initializeMcpSession(managed: ManagedClient): Promise<void> {
     const initPayload = {
@@ -248,7 +249,7 @@ export class McpClientManager {
       id: 1,
       method: "initialize",
       params: {
-        protocolVersion: "2025-03-26",
+        protocolVersion: "2025-11-25",
         capabilities: {},
         clientInfo: {
           name: "deopenclaw-gateway",
@@ -268,7 +269,16 @@ export class McpClientManager {
     });
 
     if (!response.ok) {
-      throw new Error(`MCP initialize failed: HTTP ${response.status}`);
+      // Read the error body for better diagnostics
+      const errorBody = await response.text().catch(() => "");
+      // Handle "Server already initialized" — treat as success for stateful transports
+      if (response.status === 400 && errorBody.includes("already initialized")) {
+        this.log.info(
+          `MCP server for ${managed.agentId} was already initialized, proceeding without session`,
+        );
+        return;
+      }
+      throw new Error(`MCP initialize failed: HTTP ${response.status} ${errorBody}`);
     }
 
     // Parse session ID from response headers (Mcp-Session-Id)
