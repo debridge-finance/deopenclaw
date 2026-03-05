@@ -17,6 +17,7 @@ type ManagedClient = {
   agentId: string;
   mcpEndpoint: string;
   connected: boolean;
+  mcpSessionId: string | null;
   reconnectAttempts: number;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   abortController: AbortController;
@@ -68,6 +69,7 @@ export class McpClientManager {
       agentId,
       mcpEndpoint,
       connected: false,
+      mcpSessionId: null,
       reconnectAttempts: 0,
       reconnectTimer: null,
       abortController: ac,
@@ -171,12 +173,16 @@ export class McpClientManager {
     };
 
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+      };
+      if (managed.mcpSessionId) {
+        headers["Mcp-Session-Id"] = managed.mcpSessionId;
+      }
       const response = await fetch(managed.mcpEndpoint, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json, text/event-stream",
-        },
+        headers,
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(120_000), // 2 min timeout for tool calls
       });
@@ -268,6 +274,7 @@ export class McpClientManager {
     // Parse session ID from response headers (Mcp-Session-Id)
     const sessionId = response.headers.get("mcp-session-id");
     if (sessionId) {
+      managed.mcpSessionId = sessionId;
       this.log.debug(`MCP session established for ${managed.agentId}: ${sessionId}`);
     }
 
@@ -287,12 +294,16 @@ export class McpClientManager {
     };
 
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+      };
+      if (managed.mcpSessionId) {
+        headers["Mcp-Session-Id"] = managed.mcpSessionId;
+      }
       const response = await fetch(managed.mcpEndpoint, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json, text/event-stream",
-        },
+        headers,
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(10_000),
       });
@@ -401,11 +412,15 @@ export class McpClientManager {
    * to the ActivityAggregator.
    */
   private async listenSse(managed: ManagedClient, signal: AbortSignal): Promise<void> {
+    const sseHeaders: Record<string, string> = {
+      Accept: "text/event-stream",
+    };
+    if (managed.mcpSessionId) {
+      sseHeaders["Mcp-Session-Id"] = managed.mcpSessionId;
+    }
     const response = await fetch(managed.mcpEndpoint, {
       method: "GET",
-      headers: {
-        Accept: "text/event-stream",
-      },
+      headers: sseHeaders,
       signal,
     });
 
