@@ -323,11 +323,39 @@ export class McpClientManager {
         return;
       }
 
-      const result = (await response.json()) as {
-        result?: { tools?: McpToolDefinition[] };
-      };
+      const contentType = response.headers.get("content-type") ?? "";
+      let tools: McpToolDefinition[] = [];
 
-      const tools = result?.result?.tools ?? [];
+      if (contentType.includes("text/event-stream")) {
+        // SSE response — parse events to extract JSON-RPC result
+        const sseText = await response.text();
+        for (const block of sseText.split("\n\n")) {
+          let data = "";
+          for (const line of block.split("\n")) {
+            if (line.startsWith("data:")) {
+              data += line.slice(5).trim();
+            }
+          }
+          if (!data) {
+            continue;
+          }
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed?.result?.tools) {
+              tools = parsed.result.tools;
+            }
+          } catch {
+            // skip non-JSON SSE events
+          }
+        }
+      } else {
+        // JSON response
+        const result = (await response.json()) as {
+          result?: { tools?: McpToolDefinition[] };
+        };
+        tools = result?.result?.tools ?? [];
+      }
+
       this.agentTools.set(managed.agentId, tools);
       this.log.info(
         `discovered ${tools.length} MCP tools for ${managed.agentId}: ${tools.map((t) => t.name).join(", ")}`,
