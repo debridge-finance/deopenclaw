@@ -88,6 +88,7 @@ export type GatewayRequestContext = {
     prompter: import("../../wizard/prompts.js").WizardPrompter,
   ) => Promise<void>;
   broadcastVoiceWakeChanged: (triggers: string[]) => void;
+  acppAgentStore?: import("../../acpp/agent-store.js").AgentStore;
 };
 
 export type GatewayRequestOptions = {

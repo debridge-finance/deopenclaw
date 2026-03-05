@@ -4,6 +4,7 @@ import type { AcppHttpContext } from "../acpp/acpp-http.js";
 import { ActivityAggregator } from "../acpp/activity-aggregator.js";
 import { AgentStore } from "../acpp/agent-store.js";
 import { AgentHealthPoller } from "../acpp/health-poller.js";
+import { McpClientManager } from "../acpp/mcp-client-manager.js";
 import { CANVAS_HOST_PATH } from "../canvas-host/a2ui.js";
 import { type CanvasHostHandler, createCanvasHostHandler } from "../canvas-host/server.js";
 import type { CliDeps } from "../cli/deps.js";
@@ -86,6 +87,7 @@ export async function createGatewayRuntimeState(params: {
   ) => ChatRunEntry | undefined;
   chatAbortControllers: Map<string, ChatAbortControllerEntry>;
   toolEventRecipients: ReturnType<typeof createToolEventRecipientRegistry>;
+  acppAgentStore?: AgentStore;
 }> {
   let canvasHost: CanvasHostHandler | null = null;
   if (params.canvasHostEnabled) {
@@ -149,28 +151,33 @@ export async function createGatewayRuntimeState(params: {
     (parseInt(process.env.ACPP_HEALTH_POLL_INTERVAL_MS ?? "60000", 10) || 60_000);
 
   let acppContext: AcppHttpContext | undefined;
+  let acppAgentStore: AgentStore | undefined;
   let _acppHeartbeatTimer: ReturnType<typeof setInterval> | undefined;
 
   if (acppApiKey) {
     const logAcpp = createSubsystemLogger("acpp");
-    const agentStore = new AgentStore({ heartbeatIntervalMs: acppHeartbeatIntervalMs });
+    acppAgentStore = new AgentStore({ heartbeatIntervalMs: acppHeartbeatIntervalMs });
     const healthPoller = new AgentHealthPoller(logAcpp);
     const activityAggregator = new ActivityAggregator(logAcpp);
 
-    healthPoller.start(agentStore, acppHealthPollIntervalMs);
+    healthPoller.start(acppAgentStore, acppHealthPollIntervalMs);
     _acppHeartbeatTimer = setInterval(() => {
-      const transitions = agentStore.checkMissedHeartbeats();
+      const transitions = acppAgentStore!.checkMissedHeartbeats();
       for (const t of transitions) {
         logAcpp.info(`agent ${t.agentId}: ${t.from} → ${t.to}`);
       }
     }, acppHeartbeatIntervalMs);
 
+    const mcpClientManager = new McpClientManager(logAcpp);
+    mcpClientManager.init(acppAgentStore, activityAggregator);
+
     acppContext = {
-      store: agentStore,
+      store: acppAgentStore,
       apiKey: acppApiKey,
       log: logAcpp,
       healthPoller,
       activityAggregator,
+      mcpClientManager,
     };
     logAcpp.info(
       `ACPP module enabled (heartbeat: ${acppHeartbeatIntervalMs}ms, health poll: ${acppHealthPollIntervalMs}ms)`,
@@ -264,5 +271,6 @@ export async function createGatewayRuntimeState(params: {
     removeChatRun,
     chatAbortControllers,
     toolEventRecipients,
+    acppAgentStore,
   };
 }

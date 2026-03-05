@@ -14,7 +14,7 @@ const UNRESPONSIVE_THRESHOLD = 3;
 const OFFLINE_THRESHOLD = 10;
 
 /**
- * Pure in-memory agent registry store.
+ * Pure in-memory agent discovery store.
  * No database, no DI — just a Map.
  */
 export class AgentStore {

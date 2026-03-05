@@ -500,6 +500,7 @@ export async function startGatewayServer(
     removeChatRun,
     chatAbortControllers,
     toolEventRecipients,
+    acppAgentStore,
   } = await createGatewayRuntimeState({
     cfg: cfgAtStart,
     bindHost,
@@ -773,6 +774,7 @@ export async function startGatewayServer(
       markChannelLoggedOut,
       wizardRunner,
       broadcastVoiceWakeChanged,
+      acppAgentStore,
     },
   });
   logGatewayStartup({

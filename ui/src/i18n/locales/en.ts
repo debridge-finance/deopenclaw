@@ -36,7 +36,7 @@ export const en: TranslationMap = {
     config: "Config",
     debug: "Debug",
     logs: "Logs",
-    registry: "Registry",
+    registry: "Agent Discovery",
   },
   subtitles: {
     agents: "Manage agent workspaces, tools, and identities.",
@@ -52,7 +52,7 @@ export const en: TranslationMap = {
     config: "Edit ~/.openclaw/openclaw.json safely.",
     debug: "Gateway snapshots, events, and manual RPC calls.",
     logs: "Live tail of the gateway file logs.",
-    registry: "External agents registered via ACPP.",
+    registry: "ACPP agent discovery and observability.",
   },
   overview: {
     access: {

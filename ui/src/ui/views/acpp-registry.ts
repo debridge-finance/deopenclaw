@@ -95,7 +95,7 @@ export function renderAcppRegistry(props: AcppRegistryProps) {
       <section class="card agents-sidebar">
         <div class="row" style="justify-content: space-between;">
           <div>
-            <div class="card-title">Agent Registry</div>
+            <div class="card-title">Agent Discovery</div>
             <div class="card-sub">${statusSummary(agents)}</div>
           </div>
           <button class="btn btn--sm" ?disabled=${props.loading} @click=${props.onRefresh}>

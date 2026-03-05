@@ -6,6 +6,7 @@ import { safeEqualSecret } from "../security/secret-equal.js";
 import type { ActivityAggregator } from "./activity-aggregator.js";
 import type { AgentStore } from "./agent-store.js";
 import type { AgentHealthPoller } from "./health-poller.js";
+import type { McpClientManager } from "./mcp-client-manager.js";
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
 
@@ -18,6 +19,7 @@ export type AcppHttpContext = {
   log: SubsystemLogger;
   healthPoller?: AgentHealthPoller;
   activityAggregator?: ActivityAggregator;
+  mcpClientManager?: McpClientManager;
 };
 
 /**
@@ -133,6 +135,13 @@ async function handleRegister(
   ctx.log.info(
     `agent registered: ${result.response.agentId} (${result.statusCode === 201 ? "new" : "re-registered"})`,
   );
+
+  // Connect to agent's MCP endpoint for tool discovery
+  const registered = ctx.store.get(result.response.agentId);
+  if (ctx.mcpClientManager && registered?.mcpEndpoint) {
+    void ctx.mcpClientManager.connect(result.response.agentId, registered.mcpEndpoint);
+  }
+
   sendJson(res, result.statusCode, result.response);
   return true;
 }
@@ -205,6 +214,10 @@ function handleDeregister(
     return true;
   }
   ctx.log.info(`agent deregistered: ${agentId} (reason: ${reason ?? "none"})`);
+
+  // Disconnect MCP client
+  ctx.mcpClientManager?.disconnect(agentId);
+
   sendJson(res, 200, { deregistered: true, agentId });
   return true;
 }

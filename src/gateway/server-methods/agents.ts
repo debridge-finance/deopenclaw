@@ -379,7 +379,7 @@ function respondWorkspaceFileMissing(params: {
 }
 
 export const agentsHandlers: GatewayRequestHandlers = {
-  "agents.list": ({ params, respond }) => {
+  "agents.list": ({ params, respond, context }) => {
     if (!validateAgentsListParams(params)) {
       respond(
         false,
@@ -394,6 +394,25 @@ export const agentsHandlers: GatewayRequestHandlers = {
 
     const cfg = loadConfig();
     const result = listAgentsForGateway(cfg);
+
+    // Merge ACPP-registered agents into the list
+    if (context.acppAgentStore) {
+      const existingIds = new Set(result.agents.map((a) => a.id));
+      const onlineAgents = context.acppAgentStore.getOnlineAgents();
+      for (const agent of onlineAgents) {
+        if (existingIds.has(agent.agentId)) {
+          continue;
+        }
+        result.agents.push({
+          id: agent.agentId,
+          name: agent.name || agent.agentId,
+          identity: {
+            name: agent.name || agent.agentId,
+          },
+        });
+      }
+    }
+
     respond(true, result, undefined);
   },
   "agents.create": async ({ params, respond }) => {
