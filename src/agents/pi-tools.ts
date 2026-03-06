@@ -1,10 +1,13 @@
 import { codingTools, createReadTool, readTool } from "@mariozechner/pi-coding-agent";
+import { createAcppProxyTools } from "../acpp/acpp-tool-proxy.js";
+import { getGlobalMcpClientManager } from "../acpp/mcp-client-singleton.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { ToolLoopDetectionConfig } from "../config/types.tools.js";
 import { resolveMergedSafeBinProfileFixtures } from "../infra/exec-safe-bin-runtime-policy.js";
-import { logWarn } from "../logger.js";
+import { logInfo, logWarn } from "../logger.js";
 import { getPluginToolMeta } from "../plugins/tools.js";
 import { isSubagentSessionKey } from "../routing/session-key.js";
+import { isAcpSessionKey } from "../sessions/session-key-utils.js";
 import { resolveGatewayMessageChannel } from "../utils/message-channel.js";
 import { resolveAgentConfig } from "./agent-scope.js";
 import { createApplyPatchTool } from "./apply-patch.js";
@@ -58,39 +61,44 @@ import {
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
 /**
- * Resolve ACPP proxy tools for an agent session.
- * If the session key matches `agent:<agentId>:acp:*`, look up the agent's
- * MCP tools from the global McpClientManager and create proxy tool wrappers.
+ * Resolve ACPP proxy tools for the current session.
+ * Injects proxy tools for ALL connected ACPP agents so the orchestrator
+ * can delegate to them. ACP sessions (agent:<id>:acp:*) are excluded
+ * because those agents already have their own tools via MCP.
  */
 function resolveAcppProxyTools(sessionKey?: string): AnyAgentTool[] {
   if (!sessionKey) {
     return [];
   }
-  // Match ACP session key pattern: agent:<agentId>:acp:<uuid>
-  const match = sessionKey.match(/^agent:([^:]+):acp:/);
-  if (!match) {
+  // ACP sessions already have their own MCP tools — skip to avoid duplication.
+  if (isAcpSessionKey(sessionKey)) {
     return [];
   }
-  const acppAgentId = match[1];
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getGlobalMcpClientManager } = require("../acpp/mcp-client-singleton.js") as {
-      getGlobalMcpClientManager: () =>
-        | import("../acpp/mcp-client-manager.js").McpClientManager
-        | null;
-    };
-    const { createAcppProxyTools } = require("../acpp/acpp-tool-proxy.js") as {
-      createAcppProxyTools: typeof import("../acpp/acpp-tool-proxy.js").createAcppProxyTools;
-    };
     const manager = getGlobalMcpClientManager();
     if (!manager) {
       return [];
     }
-    const mcpTools = manager.getAgentTools(acppAgentId);
-    if (mcpTools.length === 0) {
+    const connectedIds = manager.getConnectedAgentIds();
+    if (connectedIds.length === 0) {
       return [];
     }
-    return createAcppProxyTools(acppAgentId, mcpTools, manager) as unknown as AnyAgentTool[];
+    const allProxyTools: AnyAgentTool[] = [];
+    for (const agentId of connectedIds) {
+      const mcpTools = manager.getAgentTools(agentId);
+      if (mcpTools.length === 0) {
+        continue;
+      }
+      const proxied = createAcppProxyTools(agentId, mcpTools, manager) as unknown as AnyAgentTool[];
+      allProxyTools.push(...proxied);
+    }
+    if (allProxyTools.length > 0) {
+      logInfo(
+        `[acpp-proxy] injected ${allProxyTools.length} proxy tool(s) for session ${sessionKey} ` +
+          `from agents: ${connectedIds.join(", ")}`,
+      );
+    }
+    return allProxyTools;
   } catch {
     return [];
   }

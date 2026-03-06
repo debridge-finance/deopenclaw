@@ -61,6 +61,9 @@ export class McpClientManager {
    * Called after successful registration.
    */
   async connect(agentId: string, mcpEndpoint: string): Promise<void> {
+    // Preserve session ID from previous connection for reconnect scenarios
+    const previousSessionId = this.clients.get(agentId)?.mcpSessionId ?? null;
+
     // Disconnect existing if re-registering
     this.disconnect(agentId);
 
@@ -69,7 +72,7 @@ export class McpClientManager {
       agentId,
       mcpEndpoint,
       connected: false,
-      mcpSessionId: null,
+      mcpSessionId: previousSessionId,
       reconnectAttempts: 0,
       reconnectTimer: null,
       abortController: ac,
@@ -271,10 +274,14 @@ export class McpClientManager {
     if (!response.ok) {
       // Read the error body for better diagnostics
       const errorBody = await response.text().catch(() => "");
-      // Handle "Server already initialized" — treat as success for stateful transports
+      // Handle "Server already initialized" — treat as success for stateful transports.
+      // Preserve the previous session ID so tools/list and tools/call keep working.
       if (response.status === 400 && errorBody.includes("already initialized")) {
         this.log.info(
-          `MCP server for ${managed.agentId} was already initialized, proceeding without session`,
+          `MCP server for ${managed.agentId} was already initialized` +
+            (managed.mcpSessionId
+              ? `, reusing session ${managed.mcpSessionId}`
+              : ", proceeding without session"),
         );
         return;
       }

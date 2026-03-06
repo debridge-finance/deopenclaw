@@ -1,4 +1,9 @@
+import fs from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import os from "node:os";
+import path from "node:path";
+import { AGENT_DOCUMENT_NAMES } from "@debridge-finance/acpp-contracts";
+import type { AgentRegistration } from "@debridge-finance/acpp-contracts";
 import { readJsonBody } from "../gateway/hooks.js";
 import { sendJson, setSseHeaders } from "../gateway/http-common.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
@@ -13,6 +18,9 @@ type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
 const ACPP_PATH_PREFIX = "/api/v1/agents";
 const MAX_BODY_BYTES = 256 * 1024;
 
+/** Set of valid document names for write-safety validation. */
+const VALID_DOCUMENT_NAMES = new Set<string>(AGENT_DOCUMENT_NAMES);
+
 export type AcppHttpContext = {
   store: AgentStore;
   apiKey: string | undefined;
@@ -21,6 +29,47 @@ export type AcppHttpContext = {
   activityAggregator?: ActivityAggregator;
   mcpClientManager?: McpClientManager;
 };
+
+/**
+ * Resolve the workspace directory for an ACPP-registered agent.
+ * Uses the same layout as deopenclaw: ~/.openclaw/workspace-{agentId}
+ */
+function resolveAcppAgentWorkspaceDir(agentId: string): string {
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? os.homedir();
+  return path.join(home, ".openclaw", `workspace-${agentId}`);
+}
+
+/**
+ * Write agent documents from registration payload to the agent's workspace directory.
+ * Only recognized bootstrap filenames are allowed (AGENTS.md, SOUL.md, TOOLS.md, etc.).
+ */
+async function writeAgentDocumentsToWorkspace(
+  agentId: string,
+  documents: AgentRegistration["documents"],
+  log: SubsystemLogger,
+): Promise<void> {
+  if (!documents || documents.length === 0) {
+    return;
+  }
+
+  const workspaceDir = resolveAcppAgentWorkspaceDir(agentId);
+  await fs.mkdir(workspaceDir, { recursive: true });
+
+  for (const doc of documents) {
+    // Safety: only allow known bootstrap filenames
+    if (!VALID_DOCUMENT_NAMES.has(doc.name)) {
+      log.warn(`agent ${agentId}: skipping unknown document name '${doc.name}'`);
+      continue;
+    }
+    const filePath = path.join(workspaceDir, doc.name);
+    try {
+      await fs.writeFile(filePath, doc.content, "utf-8");
+    } catch (err) {
+      log.warn(`agent ${agentId}: failed to write ${doc.name}: ${String(err)}`);
+    }
+  }
+  log.info(`agent ${agentId}: wrote ${documents.length} document(s) to workspace`);
+}
 
 /**
  * Handle ACPP HTTP requests.
@@ -140,6 +189,11 @@ async function handleRegister(
   const registered = ctx.store.get(result.response.agentId);
   if (ctx.mcpClientManager && registered?.mcpEndpoint) {
     void ctx.mcpClientManager.connect(result.response.agentId, registered.mcpEndpoint);
+  }
+
+  // Write agent documents to workspace directory (fire-and-forget)
+  if (registered?.documents && registered.documents.length > 0) {
+    void writeAgentDocumentsToWorkspace(result.response.agentId, registered.documents, ctx.log);
   }
 
   sendJson(res, result.statusCode, result.response);
