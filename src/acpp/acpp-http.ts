@@ -307,7 +307,17 @@ function handleGetAgentHealth(res: ServerResponse, ctx: AcppHttpContext, agentId
     sendJson(res, 200, { agentId, health: null, message: "No health data available yet" });
     return true;
   }
-  sendJson(res, 200, { agentId, ...health });
+  if (health.error) {
+    sendJson(res, 200, {
+      agentId,
+      status: "unhealthy",
+      error: health.error,
+      cachedAt: health.fetchedAt,
+    });
+    return true;
+  }
+  // Flatten: spread health.response fields to top level so UI can read status, activeTaskCount, etc.
+  sendJson(res, 200, { agentId, ...health.response, cachedAt: health.fetchedAt });
   return true;
 }
 
