@@ -638,6 +638,46 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("## Reactions");
     expect(prompt).toContain("Reactions are enabled for Telegram in MINIMAL mode.");
   });
+
+  it("includes ACPP dispatch section when acppRoster is provided", () => {
+    const roster = "| scout-agent | `scout_agent__` | scout_agent__acpp_test_call |";
+
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      acppRoster: roster,
+    });
+
+    expect(prompt).toContain("## ACPP Agent Dispatch");
+    expect(prompt).toContain("scout-agent");
+    expect(prompt).toContain("scout_agent__acpp_test_call");
+  });
+
+  it("omits ACPP dispatch section when acppRoster is empty", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      acppRoster: "",
+    });
+
+    expect(prompt).not.toContain("## ACPP Agent Dispatch");
+  });
+
+  it("omits ACPP dispatch section when acppRoster is undefined", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+    });
+
+    expect(prompt).not.toContain("## ACPP Agent Dispatch");
+  });
+
+  it("omits ACPP dispatch section in minimal mode even with roster", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      promptMode: "minimal",
+      acppRoster: "some roster",
+    });
+
+    expect(prompt).not.toContain("## ACPP Agent Dispatch");
+  });
 });
 
 describe("buildSubagentSystemPrompt", () => {

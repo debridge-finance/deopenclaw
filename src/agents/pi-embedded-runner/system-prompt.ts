@@ -30,6 +30,8 @@ export function buildEmbeddedSystemPrompt(params: {
   promptMode?: PromptMode;
   /** Whether ACP-specific routing guidance should be included. Defaults to true. */
   acpEnabled?: boolean;
+  /** Dynamic ACPP agent roster text. */
+  acppRoster?: string;
   runtimeInfo: {
     agentId?: string;
     host: string;
@@ -70,6 +72,7 @@ export function buildEmbeddedSystemPrompt(params: {
     reactionGuidance: params.reactionGuidance,
     promptMode: params.promptMode,
     acpEnabled: params.acpEnabled,
+    acppRoster: params.acppRoster,
     runtimeInfo: params.runtimeInfo,
     messageToolHints: params.messageToolHints,
     sandboxInfo: params.sandboxInfo,

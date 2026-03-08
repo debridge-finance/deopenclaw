@@ -100,6 +100,13 @@ function buildTimeSection(params: { userTimezone?: string }) {
   return ["## Current Date & Time", `Time zone: ${params.userTimezone}`, ""];
 }
 
+function buildAcppDispatchSection(acppRoster: string | undefined, isMinimal: boolean) {
+  if (isMinimal || !acppRoster?.trim()) {
+    return [];
+  }
+  return ["## ACPP Agent Dispatch", acppRoster, ""];
+}
+
 function buildReplyTagsSection(isMinimal: boolean) {
   if (isMinimal) {
     return [];
@@ -210,6 +217,8 @@ export function buildAgentSystemPrompt(params: {
   promptMode?: PromptMode;
   /** Whether ACP-specific routing guidance should be included. Defaults to true. */
   acpEnabled?: boolean;
+  /** Dynamic ACPP agent roster text (from buildAcppRoster). */
+  acppRoster?: string;
   runtimeInfo?: {
     agentId?: string;
     host?: string;
@@ -551,6 +560,7 @@ export function buildAgentSystemPrompt(params: {
       : "",
     params.sandboxInfo?.enabled ? "" : "",
     ...buildUserIdentitySection(ownerLine, isMinimal),
+    ...buildAcppDispatchSection(params.acppRoster, isMinimal),
     ...buildTimeSection({
       userTimezone,
     }),

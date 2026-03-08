@@ -40,6 +40,7 @@ const BASE_RECONNECT_DELAY_MS = 1_000;
 export class McpClientManager {
   private readonly clients = new Map<string, ManagedClient>();
   private readonly agentTools = new Map<string, McpToolDefinition[]>();
+  private readonly connectingPromises = new Map<string, Promise<void>>();
   private readonly log: SubsystemLogger;
   private store: AgentStore | null = null;
   private activityAggregator: ActivityAggregator | null = null;
@@ -61,10 +62,32 @@ export class McpClientManager {
    * Called after successful registration.
    */
   async connect(agentId: string, mcpEndpoint: string): Promise<void> {
-    // Preserve session ID from previous connection for reconnect scenarios
-    const previousSessionId = this.clients.get(agentId)?.mcpSessionId ?? null;
+    // Dedup: if a connect() is already in progress for this agent, join it.
+    const pending = this.connectingPromises.get(agentId);
+    if (pending) {
+      this.log.debug(`MCP connect for ${agentId} already in progress, joining`);
+      return pending;
+    }
 
-    // Disconnect existing if re-registering
+    // If already connected to the same endpoint with a valid session, skip re-init.
+    const existing = this.clients.get(agentId);
+    if (existing?.connected && existing.mcpEndpoint === mcpEndpoint) {
+      this.log.debug(`MCP client for ${agentId} already connected, skipping re-init`);
+      return;
+    }
+
+    const promise = this.doConnect(agentId, mcpEndpoint);
+    this.connectingPromises.set(agentId, promise);
+    try {
+      await promise;
+    } finally {
+      this.connectingPromises.delete(agentId);
+    }
+  }
+
+  private async doConnect(agentId: string, mcpEndpoint: string): Promise<void> {
+    // Disconnect existing if re-registering — intentionally clear stale session
+    // so initializeMcpSession performs a fresh handshake.
     this.disconnect(agentId);
 
     const ac = new AbortController();
@@ -72,7 +95,7 @@ export class McpClientManager {
       agentId,
       mcpEndpoint,
       connected: false,
-      mcpSessionId: previousSessionId,
+      mcpSessionId: null,
       reconnectAttempts: 0,
       reconnectTimer: null,
       abortController: ac,
@@ -171,7 +194,17 @@ export class McpClientManager {
       method: "tools/call",
       params: {
         name: toolName,
-        arguments: args,
+        // Ensure arguments is always an object — LLMs may pass a JSON string
+        arguments:
+          typeof args === "string"
+            ? (() => {
+                try {
+                  return JSON.parse(args);
+                } catch {
+                  return { input: args };
+                }
+              })()
+            : (args ?? {}),
       },
     };
 
@@ -271,11 +304,18 @@ export class McpClientManager {
       signal: AbortSignal.timeout(10_000),
     });
 
+    // Always check for session ID in response headers, regardless of status code.
+    // The Streamable HTTP transport returns Mcp-Session-Id on both 200 and 400 responses.
+    const sessionId = response.headers.get("mcp-session-id");
+    if (sessionId) {
+      managed.mcpSessionId = sessionId;
+      this.log.info(`MCP session established for ${managed.agentId}: ${sessionId}`);
+    }
+
     if (!response.ok) {
       // Read the error body for better diagnostics
       const errorBody = await response.text().catch(() => "");
       // Handle "Server already initialized" — treat as success for stateful transports.
-      // Preserve the previous session ID so tools/list and tools/call keep working.
       if (response.status === 400 && errorBody.includes("already initialized")) {
         this.log.info(
           `MCP server for ${managed.agentId} was already initialized` +
@@ -286,13 +326,6 @@ export class McpClientManager {
         return;
       }
       throw new Error(`MCP initialize failed: HTTP ${response.status} ${errorBody}`);
-    }
-
-    // Parse session ID from response headers (Mcp-Session-Id)
-    const sessionId = response.headers.get("mcp-session-id");
-    if (sessionId) {
-      managed.mcpSessionId = sessionId;
-      this.log.debug(`MCP session established for ${managed.agentId}: ${sessionId}`);
     }
 
     // Read and discard the response body
@@ -414,11 +447,23 @@ export class McpClientManager {
           }
           try {
             const parsed = JSON.parse(data);
+            this.log.debug(`SSE tool response event: ${JSON.stringify(parsed).slice(0, 500)}`);
             if (parsed?.result) {
               lastResult = parsed.result;
+            } else if (parsed?.error) {
+              // JSON-RPC error from the tool handler
+              lastResult = {
+                content: [
+                  {
+                    type: "text",
+                    text: `MCP error: ${parsed.error.message ?? JSON.stringify(parsed.error)}`,
+                  },
+                ],
+                isError: true,
+              };
             }
           } catch {
-            // skip
+            this.log.debug(`SSE non-JSON data: ${data.slice(0, 200)}`);
           }
         }
       }
@@ -426,6 +471,9 @@ export class McpClientManager {
       reader.releaseLock();
     }
 
+    this.log.debug(
+      `SSE tool final result: ${lastResult ? JSON.stringify(lastResult).slice(0, 300) : "null"}`,
+    );
     return lastResult ?? { content: [{ type: "text", text: "No result in SSE stream" }] };
   }
 
