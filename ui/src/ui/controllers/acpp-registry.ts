@@ -116,7 +116,7 @@ export async function loadAcppAgentHealth(state: AcppRegistryState, agentId: str
     const res = await fetch(acppUrl(`/api/v1/agents/${encodeURIComponent(agentId)}/health`), {
       headers: acppHeaders(state),
     });
-    if (!res.ok) {
+    if (!res.ok && res.status !== 503) {
       throw new Error(`HTTP ${res.status}`);
     }
     const data = await res.json();
@@ -129,7 +129,10 @@ export async function loadAcppAgentHealth(state: AcppRegistryState, agentId: str
         ([name, check]) => {
           const rawStatus = typeof check.status === "string" ? check.status : "unknown";
           const status =
-            rawStatus === "pass" || rawStatus === "healthy"
+            rawStatus === "pass" ||
+            rawStatus === "healthy" ||
+            rawStatus === "up" ||
+            rawStatus === "ok"
               ? ("pass" as const)
               : rawStatus === "warn" || rawStatus === "warning"
                 ? ("warn" as const)
