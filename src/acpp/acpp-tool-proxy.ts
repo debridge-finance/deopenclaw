@@ -29,7 +29,12 @@ export function createAcppProxyTools(
       name: `${prefix}__${mcpTool.name}`,
       description: `[${agentId}] ${mcpTool.description || mcpTool.name}`,
       parameters,
-      execute: async (params: Record<string, unknown>) => {
+      execute: async (
+        _toolCallId: string,
+        params: Record<string, unknown>,
+        _signal?: AbortSignal,
+        _onUpdate?: unknown,
+      ) => {
         const result = await clientManager.callAgentTool(agentId, mcpTool.name, params);
 
         // Convert MCP result to AgentToolResult format

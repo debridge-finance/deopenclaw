@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { buildAcppRoster, buildAcppAgenticRoster } from "./acpp-roster.js";
+import type { McpClientManager } from "./mcp-client-manager.js";
 
 // Mock mcp-client-singleton
 vi.mock("./mcp-client-singleton.js", () => ({
@@ -23,7 +24,7 @@ describe("buildAcppRoster", () => {
     mockGetManager.mockReturnValue({
       getConnectedAgentIds: () => [],
       getAgentTools: () => [],
-    } as unknown);
+    } as unknown as McpClientManager);
     expect(buildAcppRoster()).toBe("");
   });
 
@@ -34,7 +35,7 @@ describe("buildAcppRoster", () => {
         { name: "acpp_test_call", description: "Test" },
         { name: "acpp_assign_task", description: "Assign" },
       ],
-    } as unknown);
+    } as unknown as McpClientManager);
 
     const roster = buildAcppRoster();
     expect(roster).toContain("ACPP Orchestrator");
@@ -50,7 +51,7 @@ describe("buildAcppRoster", () => {
       getConnectedAgentIds: () => ["scout-agent", "dev-agent"],
       getAgentTools: (_agentId: string) =>
         _agentId === "scout-agent" ? [{ name: "acpp_test_call" }] : [{ name: "code_review" }],
-    } as unknown);
+    } as unknown as McpClientManager);
 
     const roster = buildAcppRoster();
     expect(roster).toContain("scout-agent");
@@ -74,7 +75,7 @@ describe("buildAcppAgenticRoster", () => {
     mockGetManager.mockReturnValue({
       getConnectedAgentIds: () => [],
       getAgentTools: () => [],
-    } as unknown);
+    } as unknown as McpClientManager);
     expect(buildAcppAgenticRoster()).toBe("");
   });
 
@@ -82,7 +83,7 @@ describe("buildAcppAgenticRoster", () => {
     mockGetManager.mockReturnValue({
       getConnectedAgentIds: () => ["scout-agent"],
       getAgentTools: () => [{ name: "acpp_assign_task", description: "Assign" }],
-    } as unknown);
+    } as unknown as McpClientManager);
 
     const roster = buildAcppAgenticRoster();
     expect(roster).toContain("MANDATORY DELEGATION");
@@ -95,7 +96,7 @@ describe("buildAcppAgenticRoster", () => {
     mockGetManager.mockReturnValue({
       getConnectedAgentIds: () => ["scout-agent"],
       getAgentTools: () => [{ name: "acpp_assign_task" }],
-    } as unknown);
+    } as unknown as McpClientManager);
 
     const roster = buildAcppAgenticRoster();
     expect(roster).toContain("threadContent");
@@ -107,7 +108,7 @@ describe("buildAcppAgenticRoster", () => {
     mockGetManager.mockReturnValue({
       getConnectedAgentIds: () => ["scout-agent"],
       getAgentTools: () => [{ name: "acpp_test_call" }, { name: "acpp_assign_task" }],
-    } as unknown);
+    } as unknown as McpClientManager);
 
     const roster = buildAcppAgenticRoster();
     expect(roster).toContain("scout-agent");
