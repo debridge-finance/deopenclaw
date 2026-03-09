@@ -80,6 +80,9 @@ export type ChatProps = {
   onCloseSidebar?: () => void;
   onSplitRatioChange?: (ratio: number) => void;
   onChatScroll?: (event: Event) => void;
+  // Chat mode (main vs agentic)
+  chatMode?: "main" | "agentic";
+  onChatModeChange?: (mode: "main" | "agentic") => void;
 };
 
 const COMPACTION_TOAST_DURATION_MS = 5000;
@@ -458,6 +461,19 @@ export function renderChat(props: ChatProps) {
             ></textarea>
           </label>
           <div class="chat-compose__actions">
+            <select
+              class="chat-compose__mode"
+              .value=${props.chatMode ?? "main"}
+              @change=${(e: Event) => {
+                const val = (e.target as HTMLSelectElement).value as "main" | "agentic";
+                props.onChatModeChange?.(val);
+              }}
+              ?disabled=${!props.connected}
+              title="Chat mode: Main (direct) or Agentic (delegate to agents)"
+            >
+              <option value="main">Main</option>
+              <option value="agentic">⚡ Agentic</option>
+            </select>
             <button
               class="btn"
               ?disabled=${!props.connected || (!canAbort && props.sending)}

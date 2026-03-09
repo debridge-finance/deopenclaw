@@ -17,6 +17,7 @@ export type ChatHost = {
   chatQueue: ChatQueueItem[];
   chatRunId: string | null;
   chatSending: boolean;
+  chatMode: "main" | "agentic";
   sessionKey: string;
   basePath: string;
   hello: GatewayHelloOk | null;
@@ -192,7 +193,12 @@ export async function handleSendChat(
     return;
   }
 
-  await sendChatMessageNow(host, message, {
+  // Prepend [agentic] prefix when agentic mode is active (skip for slash commands)
+  const isSlashCommand = message.startsWith("/");
+  const finalMessage =
+    host.chatMode === "agentic" && !isSlashCommand ? `[agentic] ${message}` : message;
+
+  await sendChatMessageNow(host, finalMessage, {
     previousDraft: messageOverride == null ? previousDraft : undefined,
     restoreDraft: Boolean(messageOverride && opts?.restoreDraft),
     attachments: hasAttachments ? attachmentsToSend : undefined,
