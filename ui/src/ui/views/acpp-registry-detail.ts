@@ -16,6 +16,7 @@ export type AcppDetailProps = {
   healthLoading: boolean;
   activity: AcppActivityEvent[];
   activityLoading: boolean;
+  activityStreaming: boolean;
   onRefreshHealth: () => void;
   onRefreshActivity: () => void;
 };
@@ -126,7 +127,7 @@ export function renderAcppRegistryDetail(props: AcppDetailProps) {
   return html`
     ${renderInfoSection(agent)}
     ${renderHealthSection(health, props.healthLoading, props.onRefreshHealth)}
-    ${renderActivitySection(activity, props.activityLoading, props.onRefreshActivity)}
+    ${renderActivitySection(activity, props.activityLoading, props.activityStreaming, props.onRefreshActivity)}
   `;
 }
 
@@ -331,16 +332,50 @@ function renderHealthSection(
 function renderActivitySection(
   activity: AcppActivityEvent[],
   loading: boolean,
+  streaming: boolean,
   onRefresh: () => void,
 ) {
-  // Show most recent first, limit to 100
-  const events = activity.slice(0, 100);
+  // Sort newest first (DESC by timestamp), limit to 100
+  const events = [...activity]
+    .toSorted((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, 100);
 
   return html`
     <section class="card">
       <div class="row" style="justify-content: space-between;">
         <div>
-          <div class="card-title">Activity</div>
+          <div class="card-title" style="display: flex; align-items: center; gap: 8px;">
+            Activity
+            ${
+              streaming
+                ? html`
+                    <span
+                      style="
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 4px;
+                        font-size: 0.65rem;
+                        font-weight: 600;
+                        color: var(--ok, #22c55e);
+                        text-transform: uppercase;
+                        letter-spacing: 0.05em;
+                      "
+                    >
+                      <span
+                        style="
+                          width: 6px;
+                          height: 6px;
+                          border-radius: 50%;
+                          background: var(--ok, #22c55e);
+                          animation: pulse 2s ease-in-out infinite;
+                        "
+                      ></span>
+                      Live
+                    </span>
+                  `
+                : nothing
+            }
+          </div>
           <div class="card-sub">${events.length} events</div>
         </div>
         <button class="btn btn--sm" ?disabled=${loading} @click=${onRefresh}>
@@ -393,6 +428,26 @@ function renderActivitySection(
                           ${relativeTime(ev.timestamp)}
                           ${ev.taskId ? html` · <span class="mono">${ev.taskId}</span>` : nothing}
                         </div>
+                        ${
+                          ev.payload && Object.keys(ev.payload).length > 0
+                            ? html`
+                            <div style="
+                              font-size: 0.7rem;
+                              margin-top: 3px;
+                              padding: 4px 8px;
+                              background: var(--surface-1, rgba(0,0,0,0.04));
+                              border-radius: 4px;
+                              font-family: var(--mono, 'SF Mono', 'Fira Code', monospace);
+                              word-break: break-all;
+                              white-space: pre-wrap;
+                              color: var(--text-secondary, #555);
+                            ">${Object.entries(ev.payload).map(
+                              ([k, v]) =>
+                                html`<span style="color: var(--text-tertiary, #999);">${k}:</span> ${typeof v === "string" ? v : JSON.stringify(v)}  `,
+                            )}</div>
+                          `
+                            : nothing
+                        }
                       </div>
                     </div>
                   `,

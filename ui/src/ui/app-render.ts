@@ -10,6 +10,8 @@ import {
   loadAcppAgentDetail,
   loadAcppAgentHealth,
   loadAcppAgentActivity,
+  startAcppActivityStream,
+  stopAcppActivityStream,
 } from "./controllers/acpp-registry.ts";
 import { loadAgentFileContent, loadAgentFiles, saveAgentFile } from "./controllers/agent-files.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
@@ -917,18 +919,25 @@ export function renderApp(state: AppViewState) {
                 healthLoading: state.acppRegistryHealthLoading,
                 activity: state.acppRegistryActivity,
                 activityLoading: state.acppRegistryActivityLoading,
+                activityStreaming: state.acppRegistryActivityStreaming,
                 onRefresh: () => loadAcppAgents(state),
                 onSelectAgent: (agentId) => {
                   if (state.acppRegistrySelected === agentId) {
                     return;
                   }
+                  stopAcppActivityStream(state);
                   state.acppRegistrySelected = agentId;
                   state.acppRegistryDetail = null;
                   state.acppRegistryHealth = null;
                   state.acppRegistryActivity = [];
                   void loadAcppAgentDetail(state, agentId);
                   void loadAcppAgentHealth(state, agentId);
-                  void loadAcppAgentActivity(state, agentId);
+                  void loadAcppAgentActivity(state, agentId).then(() => {
+                    startAcppActivityStream(state, agentId, () => {
+                      // Re-assign to trigger Lit reactive update
+                      state.acppRegistryActivity = [...state.acppRegistryActivity];
+                    });
+                  });
                 },
                 onRefreshHealth: (agentId) => loadAcppAgentHealth(state, agentId),
                 onRefreshActivity: (agentId) => loadAcppAgentActivity(state, agentId),
@@ -1112,6 +1121,8 @@ export function renderApp(state: AppViewState) {
                 onSplitRatioChange: (ratio: number) => state.handleSplitRatioChange(ratio),
                 assistantName: state.assistantName,
                 assistantAvatar: state.assistantAvatar,
+                chatMode: state.chatMode,
+                onChatModeChange: (mode: "main" | "agentic") => (state.chatMode = mode),
               })
             : nothing
         }

@@ -18,6 +18,8 @@ export type AcppRegistryState = {
   acppRegistryHealthLoading: boolean;
   acppRegistryActivity: AcppActivityEvent[];
   acppRegistryActivityLoading: boolean;
+  acppRegistryActivityStreaming: boolean;
+  acppRegistryActivityAbort: AbortController | null;
   settings: { acppApiKey: string };
 };
 
@@ -165,7 +167,11 @@ export async function loadAcppAgentHealth(state: AcppRegistryState, agentId: str
 
 // ── Load Agent Activity ────────────────────────────────
 
-export async function loadAcppAgentActivity(state: AcppRegistryState, agentId: string, limit = 50) {
+export async function loadAcppAgentActivity(
+  state: AcppRegistryState,
+  agentId: string,
+  limit = 100,
+) {
   if (state.acppRegistryActivityLoading) {
     return;
   }
@@ -189,4 +195,107 @@ export async function loadAcppAgentActivity(state: AcppRegistryState, agentId: s
   } finally {
     state.acppRegistryActivityLoading = false;
   }
+}
+
+// ── SSE Activity Streaming ─────────────────────────────
+
+const MAX_STREAMED_EVENTS = 200;
+
+/**
+ * Open an SSE connection to stream real-time activity events for an agent.
+ * New events are prepended to the activity array (newest first).
+ */
+export function startAcppActivityStream(
+  state: AcppRegistryState,
+  agentId: string,
+  onUpdate: () => void,
+): void {
+  // Stop any existing stream
+  stopAcppActivityStream(state);
+
+  const ac = new AbortController();
+  state.acppRegistryActivityAbort = ac;
+  state.acppRegistryActivityStreaming = true;
+
+  const headers: Record<string, string> = {
+    Accept: "text/event-stream",
+  };
+  const key = state.settings.acppApiKey;
+  if (key) {
+    headers["X-API-Key"] = key;
+  }
+
+  void (async () => {
+    try {
+      const res = await fetch(
+        acppUrl(`/api/v1/agents/${encodeURIComponent(agentId)}/activity/stream`),
+        { headers, signal: ac.signal },
+      );
+
+      if (!res.ok || !res.body) {
+        state.acppRegistryActivityStreaming = false;
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split("\n\n");
+        buffer = blocks.pop() ?? "";
+
+        for (const block of blocks) {
+          let data = "";
+          for (const line of block.split("\n")) {
+            if (line.startsWith("data:")) {
+              data += line.slice(5).trim();
+            }
+          }
+          if (!data || data.startsWith(":")) {
+            continue;
+          }
+
+          try {
+            const event = JSON.parse(data) as AcppActivityEvent;
+            if (event.type === "activity") {
+              // Prepend new event (newest first), cap at MAX
+              state.acppRegistryActivity = [event, ...state.acppRegistryActivity].slice(
+                0,
+                MAX_STREAMED_EVENTS,
+              );
+              onUpdate();
+            }
+          } catch {
+            // Skip non-JSON SSE data (keepalive comments)
+          }
+        }
+      }
+    } catch (err) {
+      // AbortError is expected on disconnect
+      if (err instanceof Error && err.name !== "AbortError") {
+        console.warn("Activity stream error:", err);
+      }
+    } finally {
+      state.acppRegistryActivityStreaming = false;
+      state.acppRegistryActivityAbort = null;
+    }
+  })();
+}
+
+/**
+ * Stop the SSE activity stream.
+ */
+export function stopAcppActivityStream(state: AcppRegistryState): void {
+  if (state.acppRegistryActivityAbort) {
+    state.acppRegistryActivityAbort.abort();
+    state.acppRegistryActivityAbort = null;
+  }
+  state.acppRegistryActivityStreaming = false;
 }

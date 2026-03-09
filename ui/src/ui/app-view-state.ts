@@ -65,6 +65,7 @@ export type AppViewState = {
   chatAvatarUrl: string | null;
   chatThinkingLevel: string | null;
   chatQueue: ChatQueueItem[];
+  chatMode: "main" | "agentic";
   chatManualRefreshInFlight: boolean;
   nodesLoading: boolean;
   nodes: Array<Record<string, unknown>>;
@@ -266,6 +267,8 @@ export type AppViewState = {
     acppRegistryHealthLoading: boolean;
     acppRegistryActivity: import("./types/acpp-types.js").AcppActivityEvent[];
     acppRegistryActivityLoading: boolean;
+    acppRegistryActivityStreaming: boolean;
+    acppRegistryActivityAbort: AbortController | null;
     client: GatewayBrowserClient | null;
     refreshSessionsAfterChat: Set<string>;
     connect: () => void;

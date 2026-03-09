@@ -362,16 +362,67 @@ function handleActivityStreamAgent(
   ctx: AcppHttpContext,
   agentId: string,
 ): true {
-  if (!ctx.activityAggregator) {
-    sendJson(res, 503, { error: "Activity aggregator not configured" });
-    return true;
-  }
   const agent = ctx.store.get(agentId);
   if (!agent) {
     sendJson(res, 404, { error: `Agent '${agentId}' not found` });
     return true;
   }
+
+  // Derive activity stream URL from healthEndpoint: /healthz → /activity/stream
+  const activityStreamUrl = agent.healthEndpoint.replace(/\/healthz$/, "/activity/stream");
+
+  // Proxy SSE from agent
   setSseHeaders(res);
+
+  void (async () => {
+    try {
+      const upstream = await fetch(activityStreamUrl, {
+        headers: { Accept: "text/event-stream" },
+        signal: AbortSignal.timeout(300_000), // 5 min max
+      });
+
+      if (!upstream.ok || !upstream.body) {
+        // Agent doesn't support activity stream — fall back to local aggregator
+        ctx.log.debug(
+          `Agent ${agentId} activity/stream returned ${upstream.status}, falling back to aggregator`,
+        );
+        fallbackActivityStreamFromAggregator(req, res, ctx, agentId);
+        return;
+      }
+
+      const reader = upstream.body.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done || res.writableEnded) {
+            break;
+          }
+          res.write(Buffer.from(value));
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (err) {
+      if (!res.writableEnded) {
+        ctx.log.debug(`Agent ${agentId} activity stream proxy error: ${String(err)}, falling back`);
+        fallbackActivityStreamFromAggregator(req, res, ctx, agentId);
+      }
+    }
+  })();
+
+  return true;
+}
+
+function fallbackActivityStreamFromAggregator(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: AcppHttpContext,
+  agentId: string,
+): void {
+  if (!ctx.activityAggregator) {
+    res.end();
+    return;
+  }
   const aggregator = ctx.activityAggregator;
   const listener = (eventAgentId: string, event: unknown) => {
     if (eventAgentId === agentId && !res.writableEnded) {
@@ -390,30 +441,47 @@ function handleActivityStreamAgent(
     aggregator.unsubscribe(listener);
     clearInterval(keepalive);
   });
-
-  return true;
 }
 
-function handleActivityHistory(
+async function handleActivityHistory(
   req: IncomingMessage,
   res: ServerResponse,
   ctx: AcppHttpContext,
   agentId: string,
-): true {
-  if (!ctx.activityAggregator) {
-    sendJson(res, 503, { error: "Activity aggregator not configured" });
-    return true;
-  }
+): Promise<true> {
   const agent = ctx.store.get(agentId);
   if (!agent) {
     sendJson(res, 404, { error: `Agent '${agentId}' not found` });
     return true;
   }
-  const url = new URL(req.url ?? "/", "http://localhost");
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10) || 100, 1000);
-  const offset = parseInt(url.searchParams.get("offset") ?? "0", 10) || 0;
 
-  const events = ctx.activityAggregator.getHistory(agentId, limit, offset);
-  sendJson(res, 200, { agentId, events, limit, offset });
+  // Derive activity URL from healthEndpoint: /healthz → /activity
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const limit = url.searchParams.get("limit") ?? "100";
+  const activityUrl = agent.healthEndpoint.replace(/\/healthz$/, `/activity?limit=${limit}`);
+
+  try {
+    const upstream = await fetch(activityUrl, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!upstream.ok) {
+      throw new Error(`HTTP ${upstream.status}`);
+    }
+    const data = await upstream.json();
+    sendJson(res, 200, { agentId, ...data });
+  } catch (err) {
+    // Fall back to local aggregator
+    ctx.log.debug(`Agent ${agentId} activity proxy failed: ${String(err)}, using aggregator`);
+    if (ctx.activityAggregator) {
+      const parsedLimit = Math.min(parseInt(limit, 10) || 100, 1000);
+      const offset = parseInt(url.searchParams.get("offset") ?? "0", 10) || 0;
+      const events = ctx.activityAggregator.getHistory(agentId, parsedLimit, offset);
+      sendJson(res, 200, { agentId, events, limit: parsedLimit, offset });
+    } else {
+      sendJson(res, 200, { agentId, events: [], limit: parseInt(limit, 10) || 100, offset: 0 });
+    }
+  }
+
   return true;
 }

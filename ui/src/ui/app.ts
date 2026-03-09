@@ -151,6 +151,7 @@ export class OpenClawApp extends LitElement {
   @state() chatThinkingLevel: string | null = null;
   @state() chatQueue: ChatQueueItem[] = [];
   @state() chatAttachments: ChatAttachment[] = [];
+  @state() chatMode: "main" | "agentic" = "main";
   @state() chatManualRefreshInFlight = false;
   // Sidebar state for tool output viewing
   @state() sidebarOpen = false;
@@ -359,6 +360,8 @@ export class OpenClawApp extends LitElement {
   @state() acppRegistryHealthLoading = false;
   @state() acppRegistryActivity: import("./types/acpp-types.js").AcppActivityEvent[] = [];
   @state() acppRegistryActivityLoading = false;
+  @state() acppRegistryActivityStreaming = false;
+  acppRegistryActivityAbort: AbortController | null = null;
 
   @state() debugLoading = false;
   @state() debugStatus: StatusSummary | null = null;

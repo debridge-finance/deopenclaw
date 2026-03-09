@@ -15,6 +15,7 @@ export type AcppRegistryProps = {
   healthLoading: boolean;
   activity: AcppActivityEvent[];
   activityLoading: boolean;
+  activityStreaming: boolean;
   onRefresh: () => void;
   onSelectAgent: (agentId: string) => void;
   onRefreshHealth: (agentId: string) => void;
@@ -162,6 +163,7 @@ export function renderAcppRegistry(props: AcppRegistryProps) {
                 healthLoading: props.healthLoading,
                 activity: props.activity,
                 activityLoading: props.activityLoading,
+                activityStreaming: props.activityStreaming,
                 onRefreshHealth: () => props.onRefreshHealth(selectedAgent.agentId),
                 onRefreshActivity: () => props.onRefreshActivity(selectedAgent.agentId),
               })
