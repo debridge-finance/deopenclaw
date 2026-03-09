@@ -39,8 +39,44 @@ export function createAcppProxyTools(
 
         // Convert MCP result to AgentToolResult format
         const textParts = result.content.filter((c) => c.type === "text").map((c) => c.text);
+        let text = textParts.join("\n") || "No output";
 
-        const text = textParts.join("\n") || "No output";
+        // For acpp_assign_task: auto-poll for task result instead of returning "accepted"
+        if (mcpTool.name === "acpp_assign_task" && !result.isError) {
+          const taskId = params.taskId as string | undefined;
+          if (taskId) {
+            const POLL_INTERVAL_MS = 5_000;
+            const MAX_POLL_MS = 5 * 60 * 1000; // 5 minutes
+            const start = Date.now();
+
+            while (Date.now() - start < MAX_POLL_MS) {
+              await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+
+              try {
+                const poll = await clientManager.callAgentTool(agentId, "acpp_get_task_result", {
+                  taskId,
+                });
+                const pollText = poll.content
+                  .filter((c) => c.type === "text")
+                  .map((c) => c.text)
+                  .join("\n");
+
+                // Parse the result to check status
+                try {
+                  const parsed = JSON.parse(pollText);
+                  if (parsed.status === "completed" || parsed.status === "failed") {
+                    text = pollText;
+                    break;
+                  }
+                } catch {
+                  // Non-JSON response — keep polling
+                }
+              } catch {
+                // Poll failed — keep trying
+              }
+            }
+          }
+        }
 
         return {
           content: [{ type: "text" as const, text }],
