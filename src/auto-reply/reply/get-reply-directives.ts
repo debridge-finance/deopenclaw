@@ -299,6 +299,10 @@ export async function resolveReplyDirectives(params: {
     cleanedBody = stripInlineStatus(cleanedBody).cleaned;
   }
 
+  // Strip [agentic] mode prefix — it was consumed by commands-system-prompt.ts
+  // to select the agentic roster; the LLM should not see it.
+  cleanedBody = cleanedBody.replace(/^\[agentic\]\s*/i, "");
+
   sessionCtx.BodyForAgent = cleanedBody;
   sessionCtx.Body = cleanedBody;
   sessionCtx.BodyStripped = cleanedBody;

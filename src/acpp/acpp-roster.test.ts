@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { buildAcppRoster } from "./acpp-roster.js";
+import { buildAcppRoster, buildAcppAgenticRoster } from "./acpp-roster.js";
 
 // Mock mcp-client-singleton
 vi.mock("./mcp-client-singleton.js", () => ({
@@ -57,5 +57,61 @@ describe("buildAcppRoster", () => {
     expect(roster).toContain("dev-agent");
     expect(roster).toContain("scout_agent__acpp_test_call");
     expect(roster).toContain("dev_agent__code_review");
+  });
+});
+
+describe("buildAcppAgenticRoster", () => {
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("returns empty string when no manager", () => {
+    mockGetManager.mockReturnValue(null);
+    expect(buildAcppAgenticRoster()).toBe("");
+  });
+
+  it("returns empty string when no connected agents", () => {
+    mockGetManager.mockReturnValue({
+      getConnectedAgentIds: () => [],
+      getAgentTools: () => [],
+    } as unknown);
+    expect(buildAcppAgenticRoster()).toBe("");
+  });
+
+  it("contains mandatory delegation language", () => {
+    mockGetManager.mockReturnValue({
+      getConnectedAgentIds: () => ["scout-agent"],
+      getAgentTools: () => [{ name: "acpp_assign_task", description: "Assign" }],
+    } as unknown);
+
+    const roster = buildAcppAgenticRoster();
+    expect(roster).toContain("MANDATORY DELEGATION");
+    expect(roster).toContain("MUST");
+    expect(roster).toContain("DO NOT");
+    expect(roster).toContain("agentic mode");
+  });
+
+  it("contains threadContent documentation", () => {
+    mockGetManager.mockReturnValue({
+      getConnectedAgentIds: () => ["scout-agent"],
+      getAgentTools: () => [{ name: "acpp_assign_task" }],
+    } as unknown);
+
+    const roster = buildAcppAgenticRoster();
+    expect(roster).toContain("threadContent");
+    expect(roster).toContain("acpp_assign_task");
+    expect(roster).toContain("REQUIRED");
+  });
+
+  it("lists agent tools in table", () => {
+    mockGetManager.mockReturnValue({
+      getConnectedAgentIds: () => ["scout-agent"],
+      getAgentTools: () => [{ name: "acpp_test_call" }, { name: "acpp_assign_task" }],
+    } as unknown);
+
+    const roster = buildAcppAgenticRoster();
+    expect(roster).toContain("scout-agent");
+    expect(roster).toContain("scout_agent__acpp_test_call");
+    expect(roster).toContain("scout_agent__acpp_assign_task");
   });
 });

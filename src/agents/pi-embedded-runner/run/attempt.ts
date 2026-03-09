@@ -604,8 +604,19 @@ export async function runEmbeddedAttempt(
           disableMessageTool: params.disableMessageTool,
         });
     const tools = sanitizeToolsForGoogle({ tools: toolsRaw, provider: params.provider });
+
+    // In agentic mode, strip ALL built-in tools and keep only ACPP proxy tools
+    // (identified by the `__` double-underscore pattern, e.g. `scout_agent__acpp_assign_task`).
+    // This forces the LLM to delegate instead of performing work directly.
+    const effectiveTools = params.agenticMode ? tools.filter((t) => t.name.includes("__")) : tools;
+    if (params.agenticMode) {
+      log.info(
+        `[agentic-mode] tool filter active: ${effectiveTools.length} ACPP tools kept, ${tools.length - effectiveTools.length} built-in tools removed`,
+      );
+    }
+
     const allowedToolNames = collectAllowedToolNames({
-      tools,
+      tools: effectiveTools,
       clientTools: params.clientTools,
     });
     logToolSchemasForGoogle({ tools, provider: params.provider });
@@ -730,7 +741,7 @@ export async function runEmbeddedAttempt(
       runtimeInfo,
       messageToolHints,
       sandboxInfo,
-      tools,
+      tools: effectiveTools,
       modelAliasLines: buildModelAliasLines(params.config),
       userTimezone,
       userTime,
@@ -759,7 +770,7 @@ export async function runEmbeddedAttempt(
       bootstrapFiles: hookAdjustedBootstrapFiles,
       injectedFiles: contextFiles,
       skillsPrompt,
-      tools,
+      tools: effectiveTools,
     });
     const systemPromptOverride = createSystemPromptOverride(appendPrompt);
     let systemPromptText = systemPromptOverride();
@@ -840,7 +851,7 @@ export async function runEmbeddedAttempt(
       const hookRunner = getGlobalHookRunner();
 
       const { builtInTools, customTools } = splitSdkTools({
-        tools,
+        tools: effectiveTools,
         sandboxEnabled: !!sandbox?.enabled,
       });
 

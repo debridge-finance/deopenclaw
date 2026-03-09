@@ -514,6 +514,9 @@ export async function runPreparedReply(
       ownerNumbers: command.ownerList.length > 0 ? command.ownerList : undefined,
       extraSystemPrompt: extraSystemPromptParts.join("\n\n") || undefined,
       ...(isReasoningTagProvider(provider) ? { enforceFinalTag: true } : {}),
+      // Detect agentic mode from the original (unstripped) message body.
+      // The [agentic] prefix is injected by the UI and stripped after detection.
+      agenticMode: /^\[agentic\]/i.test((ctx.Body ?? "").trim()),
     },
   };
 

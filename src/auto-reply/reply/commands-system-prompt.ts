@@ -1,5 +1,5 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { buildAcppRoster } from "../../acpp/acpp-roster.js";
+import { buildAcppAgenticRoster, buildAcppRoster } from "../../acpp/acpp-roster.js";
 import { resolveSessionAgentIds } from "../../agents/agent-scope.js";
 import { resolveBootstrapContextForRun } from "../../agents/bootstrap-files.js";
 import { resolveDefaultModelForAgent } from "../../agents/model-selection.js";
@@ -72,7 +72,6 @@ export async function resolveCommandsSystemPromptBundle(
     }
   })();
   const toolSummaries = buildToolSummaryMap(tools);
-  const toolNames = tools.map((t) => t.name);
   const { sessionAgentId } = resolveSessionAgentIds({
     sessionKey: params.sessionKey,
     config: params.cfg,
@@ -110,6 +109,20 @@ export async function resolveCommandsSystemPromptBundle(
     : { enabled: false };
   const ttsHint = params.cfg ? buildTtsSystemPromptHint(params.cfg) : undefined;
 
+  // Detect agentic mode: message body starting with "[agentic]" triggers mandatory delegation.
+  const isAgenticMode = /^\[agentic\]/i.test((params.ctx.Body ?? "").trim());
+  const acppRoster = isAgenticMode ? buildAcppAgenticRoster() : buildAcppRoster();
+
+  // In agentic mode, strip ALL built-in tools (Read, Execute, Search, etc.) and
+  // keep only ACPP proxy tools (identified by the `__` double-underscore pattern,
+  // e.g. `scout_agent__acpp_assign_task`). This forces the LLM to delegate
+  // instead of performing work directly.
+  const effectiveTools = isAgenticMode ? tools.filter((t) => t.name.includes("__")) : tools;
+  const effectiveToolSummaries = isAgenticMode
+    ? buildToolSummaryMap(effectiveTools)
+    : toolSummaries;
+  const effectiveToolNames = effectiveTools.map((t) => t.name);
+
   const systemPrompt = buildAgentSystemPrompt({
     workspaceDir,
     defaultThinkLevel: params.resolvedThinkLevel,
@@ -117,8 +130,8 @@ export async function resolveCommandsSystemPromptBundle(
     extraSystemPrompt: undefined,
     ownerNumbers: undefined,
     reasoningTagHint: false,
-    toolNames,
-    toolSummaries,
+    toolNames: effectiveToolNames,
+    toolSummaries: effectiveToolSummaries,
     modelAliasLines: [],
     userTimezone,
     userTime,
@@ -128,11 +141,18 @@ export async function resolveCommandsSystemPromptBundle(
     heartbeatPrompt: undefined,
     ttsHint,
     acpEnabled: params.cfg?.acp?.enabled !== false,
-    acppRoster: buildAcppRoster(),
+    acppRoster,
     runtimeInfo,
     sandboxInfo,
     memoryCitationsMode: params.cfg?.memory?.citations,
   });
 
-  return { systemPrompt, tools, skillsPrompt, bootstrapFiles, injectedFiles, sandboxRuntime };
+  return {
+    systemPrompt,
+    tools: effectiveTools,
+    skillsPrompt,
+    bootstrapFiles,
+    injectedFiles,
+    sandboxRuntime,
+  };
 }

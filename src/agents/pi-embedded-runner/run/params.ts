@@ -107,4 +107,6 @@ export type RunEmbeddedPiAgentParams = {
   streamParams?: AgentStreamParams;
   ownerNumbers?: string[];
   enforceFinalTag?: boolean;
+  /** When true, only ACPP proxy tools (containing `__`) are available — agentic mode. */
+  agenticMode?: boolean;
 };
