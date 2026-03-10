@@ -172,6 +172,31 @@ export class McpClientManager {
   }
 
   /**
+   * Get agent metadata (description, capabilities, status, name) from AgentStore.
+   * Used by the orchestrator roster to provide rich agent info in the system prompt.
+   */
+  getAgentInfo(agentId: string): {
+    description: string;
+    capabilities: string[];
+    status: string;
+    name: string;
+  } | null {
+    if (!this.store) {
+      return null;
+    }
+    const record = this.store.get(agentId);
+    if (!record) {
+      return null;
+    }
+    return {
+      description: record.description,
+      capabilities: record.capabilities,
+      status: record.status,
+      name: record.name,
+    };
+  }
+
+  /**
    * Proxy a tool call to the agent's MCP endpoint.
    * Sends a `tools/call` JSON-RPC request and returns the result.
    */

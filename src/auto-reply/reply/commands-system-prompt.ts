@@ -1,5 +1,9 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { buildAcppAgenticRoster, buildAcppRoster } from "../../acpp/acpp-roster.js";
+import {
+  buildAcppOrchestratorRoster,
+  buildAcppRoster,
+  hasAcppConnectedAgents,
+} from "../../acpp/acpp-roster.js";
 import { resolveSessionAgentIds } from "../../agents/agent-scope.js";
 import { resolveBootstrapContextForRun } from "../../agents/bootstrap-files.js";
 import { resolveDefaultModelForAgent } from "../../agents/model-selection.js";
@@ -109,16 +113,15 @@ export async function resolveCommandsSystemPromptBundle(
     : { enabled: false };
   const ttsHint = params.cfg ? buildTtsSystemPromptHint(params.cfg) : undefined;
 
-  // Detect agentic mode: message body starting with "[agentic]" triggers mandatory delegation.
-  const isAgenticMode = /^\[agentic\]/i.test((params.ctx.Body ?? "").trim());
-  const acppRoster = isAgenticMode ? buildAcppAgenticRoster() : buildAcppRoster();
+  // Orchestrator mode: activate when ACPP agents are connected or user explicitly uses [agentic]
+  const isAgenticExplicit = /^\[agentic\]/i.test((params.ctx.Body ?? "").trim());
+  const hasAgents = hasAcppConnectedAgents();
+  const isOrchestratorMode = isAgenticExplicit || hasAgents;
+  const acppRoster = isOrchestratorMode ? buildAcppOrchestratorRoster() : buildAcppRoster();
 
-  // In agentic mode, strip ALL built-in tools (Read, Execute, Search, etc.) and
-  // keep only ACPP proxy tools (identified by the `__` double-underscore pattern,
-  // e.g. `scout_agent__acpp_assign_task`). This forces the LLM to delegate
-  // instead of performing work directly.
-  const effectiveTools = isAgenticMode ? tools.filter((t) => t.name.includes("__")) : tools;
-  const effectiveToolSummaries = isAgenticMode
+  // In orchestrator mode, strip ALL built-in tools and keep only ACPP proxy tools
+  const effectiveTools = isOrchestratorMode ? tools.filter((t) => t.name.includes("__")) : tools;
+  const effectiveToolSummaries = isOrchestratorMode
     ? buildToolSummaryMap(effectiveTools)
     : toolSummaries;
   const effectiveToolNames = effectiveTools.map((t) => t.name);
@@ -142,6 +145,7 @@ export async function resolveCommandsSystemPromptBundle(
     ttsHint,
     acpEnabled: params.cfg?.acp?.enabled !== false,
     acppRoster,
+    promptMode: isOrchestratorMode ? "orchestrator" : undefined,
     runtimeInfo,
     sandboxInfo,
     memoryCitationsMode: params.cfg?.memory?.citations,

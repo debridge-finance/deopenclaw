@@ -21,6 +21,15 @@ export default defineConfig({
         find: "openclaw/plugin-sdk",
         replacement: path.join(repoRoot, "src", "plugin-sdk", "index.ts"),
       },
+      {
+        // Resolve acpp-contracts to CJS directly — the auto-generated ESM wrapper
+        // (dist/index.mjs) resolves schemas as undefined under vitest forks.
+        find: "@debridge-finance/acpp-contracts",
+        replacement: path.resolve(
+          repoRoot,
+          "node_modules/@debridge-finance/acpp-contracts/dist/index.js",
+        ),
+      },
     ],
   },
   test: {

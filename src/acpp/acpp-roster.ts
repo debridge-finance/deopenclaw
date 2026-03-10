@@ -2,6 +2,18 @@ import type { McpClientManager } from "./mcp-client-manager.js";
 import { getGlobalMcpClientManager } from "./mcp-client-singleton.js";
 
 /**
+ * Returns true when at least one ACPP agent is connected to the gateway.
+ * Used by callers to determine whether orchestrator mode should be active.
+ */
+export function hasAcppConnectedAgents(): boolean {
+  const manager = getGlobalMcpClientManager();
+  if (!manager) {
+    return false;
+  }
+  return manager.getConnectedAgentIds().length > 0;
+}
+
+/**
  * Build the markdown agent table shared between both roster modes.
  * Returns the table lines (including header) and the connected agent IDs.
  */
@@ -58,25 +70,28 @@ export function buildAcppRoster(): string {
     "- When user mentions `agent_name.tool_name` or `agent_id.tool_name`, call the matching proxy tool **immediately without confirmation**.",
   );
   lines.push("- Proxy tools forward via MCP to the agent. The result is the agent's response.");
-  lines.push("- Use `{prefix}__acpp_test_call` to verify connectivity with any agent.");
-  lines.push("- Use `{prefix}__acpp_assign_task` to delegate complex, multi-step work.");
+  lines.push("- Use `<agent_prefix>__acpp_test_call` to verify connectivity with any agent.");
+  lines.push("- Use `<agent_prefix>__acpp_assign_task` to delegate complex, multi-step work.");
 
   return lines.join("\n");
 }
 
 /**
- * Build an **agentic-mode** roster prompt that forces the LLM to delegate ALL
- * user requests to connected ACPP agents. Used when the UI is in "Agentic Mode".
+ * Build an **orchestrator-mode** roster prompt that forces the LLM to delegate ALL
+ * user requests to connected ACPP agents. The orchestrator never performs work itself.
+ *
+ * Unlike the basic roster, this includes rich agent metadata (description, capabilities)
+ * so the LLM can make informed routing decisions.
  *
  * Returns empty string when no agents are connected.
  */
-export function buildAcppAgenticRoster(): string {
+export function buildAcppOrchestratorRoster(): string {
   const manager = getGlobalMcpClientManager();
   if (!manager) {
     return "";
   }
 
-  const { lines: tableLines, connectedIds } = buildAgentTable(manager);
+  const connectedIds = manager.getConnectedAgentIds();
   if (connectedIds.length === 0) {
     return "";
   }
@@ -94,56 +109,65 @@ export function buildAcppAgenticRoster(): string {
   const lines: string[] = [];
 
   // -- CRITICAL preamble --
-  lines.push("## ⚡ AGENTIC MODE — MANDATORY DELEGATION");
+  lines.push("## ⚡ ORCHESTRATOR MODE — MANDATORY DELEGATION");
   lines.push("");
   lines.push(
-    "**CRITICAL SYSTEM INSTRUCTION**: You are an **ACPP Orchestrator** operating in " +
-      "**strict agentic mode**. In this mode you are a **pure router** — your ONLY job is to " +
-      "forward user requests to connected agents and relay their responses.",
+    "**CRITICAL SYSTEM INSTRUCTION**: You are a **pure orchestrator**. You do NOT perform any work yourself. " +
+      "Your ONLY purpose is to route user requests to the appropriate ACPP agent.",
   );
+  lines.push("");
+
+  // -- Decision Flow --
+  lines.push("### Decision Flow");
+  lines.push("1. Analyze the user's request to understand intent");
+  lines.push("2. Review the connected agents and their capabilities below");
+  lines.push("3. Select the best agent for the task");
+  lines.push("4. Call `<agent_prefix>__acpp_assign_task` with:");
+  lines.push("   - `taskId`: generate a unique UUID");
+  lines.push("   - `description`: human-readable summary of what the agent should do");
+  lines.push("   - `params.threadContent`: the FULL user request text (verbatim)");
+  lines.push('   - `priority`: "normal" (or "high" for urgent tasks)');
+  lines.push("5. Wait for the result (auto-polling is handled by the system)");
+  lines.push("6. Return the agent's response to the user");
   lines.push("");
 
   // -- Explicit tool prohibition --
   lines.push("### 🚫 PROHIBITED ACTIONS");
   lines.push("");
   lines.push(
-    "You **MUST NOT** use any of the following tools: `Read`, `Execute`, `Search`, `Write`, " +
-      "`Grep`, `List`, `Glob`, `Cat`, `Bash`, `WebSearch`, `WebFetch`, or ANY other " +
-      "built-in/workspace tool. The **ONLY** tools you are allowed to call are ACPP proxy tools:",
+    "You **MUST NOT** use any built-in/workspace tools. " +
+      "The **ONLY** tools you are allowed to call are ACPP proxy tools:",
   );
   lines.push("");
   for (const toolName of acppToolNames) {
     lines.push(`- \`${toolName}\``);
   }
   lines.push("");
-  lines.push("**If you use ANY tool not in the list above, you are violating agentic mode.**");
+  lines.push("**If you use ANY tool not in the list above, you are violating orchestrator mode.**");
   lines.push("");
 
-  // -- Mandatory rules --
-  lines.push("### Rules (non-negotiable)");
-  lines.push("");
-  lines.push(
-    "1. Every user request **MUST** result in a call to `{prefix}__acpp_assign_task` " +
-      "or another ACPP proxy tool.",
-  );
-  lines.push(
-    "2. **NEVER** answer from your own knowledge, read files yourself, execute code yourself, " +
-      "or do research yourself. You are a dispatcher, not an executor.",
-  );
-  lines.push("3. Choose the most appropriate agent based on the task description.");
-  lines.push(
-    "4. For complex/multi-step tasks: use `{prefix}__acpp_assign_task` with a clear " +
-      "`description` and `params.threadContent` containing the full user request.",
-  );
-  lines.push("5. For simple tool calls (test, ping): call `{prefix}__acpp_test_call` directly.");
-  lines.push("6. After delegating, relay the agent's response to the user.");
-  lines.push("");
-
-  // -- Agent table --
+  // -- Connected Agents with enriched metadata --
   lines.push("### Connected Agents");
   lines.push("");
-  lines.push(...tableLines);
-  lines.push("");
+
+  for (const agentId of connectedIds) {
+    const prefix = agentId.replace(/-/g, "_");
+    const info = manager.getAgentInfo(agentId);
+
+    if (info) {
+      const statusBadge = info.status === "ONLINE" ? "ONLINE" : info.status;
+      lines.push(`#### ${info.name} (${statusBadge})`);
+      lines.push(`- **Agent ID**: ${agentId}`);
+      lines.push(`- **Description**: ${info.description}`);
+      lines.push(`- **Capabilities**: ${info.capabilities.join(", ")}`);
+      lines.push(`- **Delegate via**: \`${prefix}__acpp_assign_task\``);
+    } else {
+      // Fallback: no metadata available from AgentStore
+      lines.push(`#### ${agentId}`);
+      lines.push(`- **Delegate via**: \`${prefix}__acpp_assign_task\``);
+    }
+    lines.push("");
+  }
 
   // -- assign_task usage guide --
   lines.push("### How to use `acpp_assign_task`");
@@ -165,25 +189,27 @@ export function buildAcppAgenticRoster(): string {
   );
   lines.push("");
 
-  // -- Routing --
-  lines.push("### Routing Rules");
+  // -- Routing Guidelines --
+  lines.push("### Routing Guidelines");
+  lines.push("- Match user intent to the best agent based on the capabilities listed above.");
   lines.push(
-    "- Match user intent to the best agent. When uncertain, prefer `scout-agent` for " +
-      "research/investigation tasks.",
+    "- When uncertain, prefer agents with research/analysis capabilities for investigation tasks.",
   );
   lines.push(
-    "- Call proxy tools **immediately without confirmation** — do not ask the user " +
-      "which agent to use.",
-  );
-  lines.push(
-    "- If the task result is not yet ready (`status: running`), wait briefly and poll " +
-      "again with `acpp_get_task_result`.",
+    "- Call proxy tools **immediately without confirmation** — do not ask the user which agent to use.",
   );
   lines.push("- Relay the agent's response to the user verbatim or with minimal formatting.");
   lines.push("");
+
+  // -- What the orchestrator CAN do --
+  lines.push("### What you CAN do without delegation");
+  lines.push("- Answer meta-questions about yourself (status, connected agents)");
+  lines.push("- Explain what agents are available and their capabilities");
+  lines.push("- Ask clarifying questions to better route the request");
+  lines.push("");
+
   lines.push(
-    "**REMINDER: DO NOT use Read, Execute, Search, or any other built-in tool. " +
-      "ONLY use the ACPP proxy tools listed above.**",
+    "**REMINDER: ONLY use the ACPP proxy tools listed above. Do NOT use any other tools.**",
   );
 
   return lines.join("\n");

@@ -31,10 +31,13 @@ export function createAcppProxyTools(
       parameters,
       execute: async (
         _toolCallId: string,
-        params: Record<string, unknown>,
+        rawParams: Record<string, unknown>,
         _signal?: AbortSignal,
         _onUpdate?: unknown,
       ) => {
+        // Normalize params: LLMs sometimes send nested objects as JSON strings.
+        // Parse them back so the agent receives real objects as the schema expects.
+        const params = normalizeParams(rawParams, mcpTool.inputSchema);
         const result = await clientManager.callAgentTool(agentId, mcpTool.name, params);
 
         // Convert MCP result to AgentToolResult format
@@ -120,6 +123,11 @@ function convertJsonSchemaToTypebox(schema: Record<string, unknown>) {
         typeboxProps[key] = isRequired
           ? Type.Array(Type.Unknown(), { description })
           : Type.Optional(Type.Array(Type.Unknown(), { description }));
+      } else if (prop.type === "object") {
+        // Nested object / record — tell the LLM this is a JSON object, not a string
+        typeboxProps[key] = isRequired
+          ? Type.Record(Type.String(), Type.Unknown(), { description })
+          : Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description }));
       } else {
         // Fallback: accept any value
         typeboxProps[key] = isRequired
@@ -136,4 +144,36 @@ function convertJsonSchemaToTypebox(schema: Record<string, unknown>) {
   return Type.Object({
     input: Type.Optional(Type.Unknown({ description: "Tool input" })),
   });
+}
+
+/**
+ * Normalize tool call params from the LLM.
+ * LLMs sometimes serialize nested objects as JSON strings instead of real objects.
+ * For each property that the schema expects as "object" but we received a "string",
+ * attempt to JSON.parse it back.
+ */
+function normalizeParams(
+  params: Record<string, unknown>,
+  inputSchema?: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!inputSchema || inputSchema.type !== "object" || !inputSchema.properties) {
+    return params;
+  }
+
+  const props = inputSchema.properties as Record<string, Record<string, unknown>>;
+  const result = { ...params };
+
+  for (const [key, prop] of Object.entries(props)) {
+    const value = result[key];
+    // If schema expects object/array but received a string, try to parse it
+    if (typeof value === "string" && (prop.type === "object" || prop.type === "array")) {
+      try {
+        result[key] = JSON.parse(value);
+      } catch {
+        // Keep original string if it's not valid JSON
+      }
+    }
+  }
+
+  return result;
 }

@@ -13,8 +13,10 @@ import { sanitizeForPromptLiteral } from "./sanitize-for-prompt.js";
  * - "full": All sections (default, for main agent)
  * - "minimal": Reduced sections (Tooling, Workspace, Runtime) - used for subagents
  * - "none": Just basic identity line, no sections
+ * - "orchestrator": Pure delegation mode — strips Tooling/CLI/Skills/Memory/Docs/Sandbox,
+ *   keeps Safety/ACPP Dispatch/Messaging/Heartbeats/Runtime
  */
-export type PromptMode = "full" | "minimal" | "none";
+export type PromptMode = "full" | "minimal" | "none" | "orchestrator";
 type OwnerIdDisplay = "raw" | "hash";
 
 function buildSkillsSection(params: { skillsPrompt?: string; readToolName: string }) {
@@ -100,8 +102,8 @@ function buildTimeSection(params: { userTimezone?: string }) {
   return ["## Current Date & Time", `Time zone: ${params.userTimezone}`, ""];
 }
 
-function buildAcppDispatchSection(acppRoster: string | undefined, isMinimal: boolean) {
-  if (isMinimal || !acppRoster?.trim()) {
+function buildAcppDispatchSection(acppRoster: string | undefined, skipDispatch: boolean) {
+  if (skipDispatch || !acppRoster?.trim()) {
     return [];
   }
   return ["## ACPP Agent Dispatch", acppRoster, ""];
@@ -382,6 +384,7 @@ export function buildAgentSystemPrompt(params: {
   const messageChannelOptions = listDeliverableMessageChannels().join("|");
   const promptMode = params.promptMode ?? "full";
   const isMinimal = promptMode === "minimal" || promptMode === "none";
+  const isOrchestrator = promptMode === "orchestrator";
   const sandboxContainerWorkspace = params.sandboxInfo?.containerWorkspaceDir?.trim();
   const sanitizedWorkspaceDir = sanitizeForPromptLiteral(params.workspaceDir);
   const sanitizedSandboxContainerWorkspace = sandboxContainerWorkspace
@@ -423,100 +426,119 @@ export function buildAgentSystemPrompt(params: {
     return "You are a personal assistant running inside OpenClaw.";
   }
 
-  const lines = [
-    "You are a personal assistant running inside OpenClaw.",
-    "",
-    "## Tooling",
-    "Tool availability (filtered by policy):",
-    "Tool names are case-sensitive. Call tools exactly as listed.",
-    toolLines.length > 0
-      ? toolLines.join("\n")
-      : [
-          "Pi lists the standard tools above. This runtime enables:",
-          "- grep: search file contents for patterns",
-          "- find: find files by glob pattern",
-          "- ls: list directory contents",
-          "- apply_patch: apply multi-file patches",
-          `- ${execToolName}: run shell commands (supports background via yieldMs/background)`,
-          `- ${processToolName}: manage background exec sessions`,
-          "- browser: control OpenClaw's dedicated browser",
-          "- canvas: present/eval/snapshot the Canvas",
-          "- nodes: list/describe/notify/camera/screen on paired nodes",
-          "- cron: manage cron jobs and wake events (use for reminders; when scheduling a reminder, write the systemEvent text as something that will read like a reminder when it fires, and mention that it is a reminder depending on the time gap between setting and firing; include recent context in reminder text if appropriate)",
-          "- sessions_list: list sessions",
-          "- sessions_history: fetch session history",
-          "- sessions_send: send to another session",
-          "- subagents: list/steer/kill sub-agent runs",
-          '- session_status: show usage/time/model state and answer "what model are we using?"',
-        ].join("\n"),
-    "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",
-    `For long waits, avoid rapid poll loops: use ${execToolName} with enough yieldMs or ${processToolName}(action=poll, timeout=<ms>).`,
-    "If a task is more complex or takes longer, spawn a sub-agent. Completion is push-based: it will auto-announce when done.",
-    ...(hasSessionsSpawn && acpEnabled
-      ? [
-          'For requests like "do this in codex/claude code/gemini", treat it as ACP harness intent and call `sessions_spawn` with `runtime: "acp"`.',
-          'On Discord, default ACP harness requests to thread-bound persistent sessions (`thread: true`, `mode: "session"`) unless the user asks otherwise.',
-          "Set `agentId` explicitly unless `acp.defaultAgent` is configured, and do not route ACP harness requests through `subagents`/`agents_list` or local PTY exec flows.",
-          'For ACP harness thread spawns, do not call `message` with `action=thread-create`; use `sessions_spawn` (`runtime: "acp"`, `thread: true`) as the single thread creation path.',
-        ]
-      : []),
-    "Do not poll `subagents list` / `sessions_list` in a loop; only check status on-demand (for intervention, debugging, or when explicitly asked).",
-    "",
-    "## Tool Call Style",
-    "Default: do not narrate routine, low-risk tool calls (just call the tool).",
-    "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
-    "Keep narration brief and value-dense; avoid repeating obvious steps.",
-    "Use plain human language for narration unless in a technical context.",
-    "When a first-class tool exists for an action, use the tool directly instead of asking the user to run equivalent CLI or slash commands.",
-    "",
-    ...safetySection,
-    "## OpenClaw CLI Quick Reference",
-    "OpenClaw is controlled via subcommands. Do not invent commands.",
-    "To manage the Gateway daemon service (start/stop/restart):",
-    "- openclaw gateway status",
-    "- openclaw gateway start",
-    "- openclaw gateway stop",
-    "- openclaw gateway restart",
-    "If unsure, ask the user to run `openclaw help` (or `openclaw gateway --help`) and paste the output.",
-    "",
-    ...skillsSection,
-    ...memorySection,
-    // Skip self-update for subagent/none modes
-    hasGateway && !isMinimal ? "## OpenClaw Self-Update" : "",
-    hasGateway && !isMinimal
-      ? [
+  const lines = ["You are a personal assistant running inside OpenClaw.", ""];
+
+  // ── Tooling section (skip in orchestrator mode) ──
+  if (!isOrchestrator) {
+    lines.push(
+      "## Tooling",
+      "Tool availability (filtered by policy):",
+      "Tool names are case-sensitive. Call tools exactly as listed.",
+      toolLines.length > 0
+        ? toolLines.join("\n")
+        : [
+            "Pi lists the standard tools above. This runtime enables:",
+            "- grep: search file contents for patterns",
+            "- find: find files by glob pattern",
+            "- ls: list directory contents",
+            "- apply_patch: apply multi-file patches",
+            `- ${execToolName}: run shell commands (supports background via yieldMs/background)`,
+            `- ${processToolName}: manage background exec sessions`,
+            "- browser: control OpenClaw's dedicated browser",
+            "- canvas: present/eval/snapshot the Canvas",
+            "- nodes: list/describe/notify/camera/screen on paired nodes",
+            "- cron: manage cron jobs and wake events (use for reminders; when scheduling a reminder, write the systemEvent text as something that will read like a reminder when it fires, and mention that it is a reminder depending on the time gap between setting and firing; include recent context in reminder text if appropriate)",
+            "- sessions_list: list sessions",
+            "- sessions_history: fetch session history",
+            "- sessions_send: send to another session",
+            "- subagents: list/steer/kill sub-agent runs",
+            '- session_status: show usage/time/model state and answer "what model are we using?"',
+          ].join("\n"),
+      "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",
+      `For long waits, avoid rapid poll loops: use ${execToolName} with enough yieldMs or ${processToolName}(action=poll, timeout=<ms>).`,
+      "If a task is more complex or takes longer, spawn a sub-agent. Completion is push-based: it will auto-announce when done.",
+    );
+    if (hasSessionsSpawn && acpEnabled) {
+      lines.push(
+        'For requests like "do this in codex/claude code/gemini", treat it as ACP harness intent and call `sessions_spawn` with `runtime: "acp"`.',
+        'On Discord, default ACP harness requests to thread-bound persistent sessions (`thread: true`, `mode: "session"`) unless the user asks otherwise.',
+        "Set `agentId` explicitly unless `acp.defaultAgent` is configured, and do not route ACP harness requests through `subagents`/`agents_list` or local PTY exec flows.",
+        'For ACP harness thread spawns, do not call `message` with `action=thread-create`; use `sessions_spawn` (`runtime: "acp"`, `thread: true`) as the single thread creation path.',
+      );
+    }
+    lines.push(
+      "Do not poll `subagents list` / `sessions_list` in a loop; only check status on-demand (for intervention, debugging, or when explicitly asked).",
+      "",
+      "## Tool Call Style",
+      "Default: do not narrate routine, low-risk tool calls (just call the tool).",
+      "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
+      "Keep narration brief and value-dense; avoid repeating obvious steps.",
+      "Use plain human language for narration unless in a technical context.",
+      "When a first-class tool exists for an action, use the tool directly instead of asking the user to run equivalent CLI or slash commands.",
+      "",
+    );
+  }
+
+  // ── Safety (always included) ──
+  lines.push(...safetySection);
+
+  // ── CLI / Skills / Memory / Self-Update / Model Aliases (skip in orchestrator) ──
+  if (!isOrchestrator) {
+    lines.push(
+      "## OpenClaw CLI Quick Reference",
+      "OpenClaw is controlled via subcommands. Do not invent commands.",
+      "To manage the Gateway daemon service (start/stop/restart):",
+      "- openclaw gateway status",
+      "- openclaw gateway start",
+      "- openclaw gateway stop",
+      "- openclaw gateway restart",
+      "If unsure, ask the user to run `openclaw help` (or `openclaw gateway --help`) and paste the output.",
+      "",
+    );
+    lines.push(...skillsSection);
+    lines.push(...memorySection);
+    if (hasGateway && !isMinimal) {
+      lines.push(
+        "## OpenClaw Self-Update",
+        [
           "Get Updates (self-update) is ONLY allowed when the user explicitly asks for it.",
           "Do not run config.apply or update.run unless the user explicitly requests an update or config change; if it's not explicit, ask first.",
           "Use config.schema to fetch the current JSON Schema (includes plugins/channels) before making config changes or answering config-field questions; avoid guessing field names/types.",
           "Actions: config.get, config.schema, config.apply (validate + write full config, then restart), update.run (update deps or git, then restart).",
           "After restart, OpenClaw pings the last active session automatically.",
-        ].join("\n")
-      : "",
-    hasGateway && !isMinimal ? "" : "",
-    "",
-    // Skip model aliases for subagent/none modes
-    params.modelAliasLines && params.modelAliasLines.length > 0 && !isMinimal
-      ? "## Model Aliases"
-      : "",
-    params.modelAliasLines && params.modelAliasLines.length > 0 && !isMinimal
-      ? "Prefer aliases when specifying model overrides; full provider/model is also accepted."
-      : "",
-    params.modelAliasLines && params.modelAliasLines.length > 0 && !isMinimal
-      ? params.modelAliasLines.join("\n")
-      : "",
-    params.modelAliasLines && params.modelAliasLines.length > 0 && !isMinimal ? "" : "",
-    userTimezone
-      ? "If you need the current date, time, or day of week, run session_status (📊 session_status)."
-      : "",
-    "## Workspace",
-    `Your working directory is: ${displayWorkspaceDir}`,
-    workspaceGuidance,
-    ...workspaceNotes,
-    "",
-    ...docsSection,
-    params.sandboxInfo?.enabled ? "## Sandbox" : "",
-    params.sandboxInfo?.enabled
-      ? [
+        ].join("\n"),
+        "",
+      );
+    }
+    if (params.modelAliasLines && params.modelAliasLines.length > 0 && !isMinimal) {
+      lines.push(
+        "## Model Aliases",
+        "Prefer aliases when specifying model overrides; full provider/model is also accepted.",
+        params.modelAliasLines.join("\n"),
+        "",
+      );
+    }
+    if (userTimezone) {
+      lines.push(
+        "If you need the current date, time, or day of week, run session_status (📊 session_status).",
+      );
+    }
+  }
+
+  // ── Workspace (always included, minimal in orchestrator) ──
+  lines.push("## Workspace", `Your working directory is: ${displayWorkspaceDir}`);
+  if (!isOrchestrator) {
+    lines.push(workspaceGuidance, ...workspaceNotes);
+  }
+  lines.push("");
+
+  // ── Docs / Sandbox (skip in orchestrator) ──
+  if (!isOrchestrator) {
+    lines.push(...docsSection);
+    if (params.sandboxInfo?.enabled) {
+      lines.push(
+        "## Sandbox",
+        [
           "You are running in a sandboxed runtime (tools execute in Docker).",
           "Some tools may be unavailable due to sandbox policy.",
           "Sub-agents stay sandboxed (no elevated/host access). Need outside-sandbox read/write? Don't spawn; ask first.",
@@ -556,18 +578,29 @@ export function buildAgentSystemPrompt(params: {
             : "",
         ]
           .filter(Boolean)
-          .join("\n")
-      : "",
-    params.sandboxInfo?.enabled ? "" : "",
-    ...buildUserIdentitySection(ownerLine, isMinimal),
-    ...buildAcppDispatchSection(params.acppRoster, isMinimal),
-    ...buildTimeSection({
-      userTimezone,
-    }),
-    "## Workspace Files (injected)",
-    "These user-editable files are loaded by OpenClaw and included below in Project Context.",
-    "",
-    ...buildReplyTagsSection(isMinimal),
+          .join("\n"),
+        "",
+      );
+    }
+  }
+
+  // ── Owner / ACPP Dispatch / Time ──
+  lines.push(...buildUserIdentitySection(ownerLine, isMinimal));
+  // ACPP Dispatch fires for full and orchestrator modes (not minimal/none)
+  lines.push(...buildAcppDispatchSection(params.acppRoster, isMinimal));
+  lines.push(...buildTimeSection({ userTimezone }));
+
+  if (!isOrchestrator) {
+    lines.push(
+      "## Workspace Files (injected)",
+      "These user-editable files are loaded by OpenClaw and included below in Project Context.",
+      "",
+    );
+  }
+
+  // ── Reply Tags / Messaging / Voice (always for non-minimal) ──
+  lines.push(...buildReplyTagsSection(isMinimal));
+  lines.push(
     ...buildMessagingSection({
       isMinimal,
       availableTools,
@@ -576,8 +609,8 @@ export function buildAgentSystemPrompt(params: {
       runtimeChannel,
       messageToolHints: params.messageToolHints,
     }),
-    ...buildVoiceSection({ isMinimal, ttsHint: params.ttsHint }),
-  ];
+  );
+  lines.push(...buildVoiceSection({ isMinimal, ttsHint: params.ttsHint }));
 
   if (extraSystemPrompt) {
     // Use "Subagent Context" header for minimal mode (subagents), otherwise "Group Chat Context"
@@ -612,25 +645,28 @@ export function buildAgentSystemPrompt(params: {
     lines.push("## Reasoning Format", reasoningHint, "");
   }
 
-  const contextFiles = params.contextFiles ?? [];
-  const validContextFiles = contextFiles.filter(
-    (file) => typeof file.path === "string" && file.path.trim().length > 0,
-  );
-  if (validContextFiles.length > 0) {
-    const hasSoulFile = validContextFiles.some((file) => {
-      const normalizedPath = file.path.trim().replace(/\\/g, "/");
-      const baseName = normalizedPath.split("/").pop() ?? normalizedPath;
-      return baseName.toLowerCase() === "soul.md";
-    });
-    lines.push("# Project Context", "", "The following project context files have been loaded:");
-    if (hasSoulFile) {
-      lines.push(
-        "If SOUL.md is present, embody its persona and tone. Avoid stiff, generic replies; follow its guidance unless higher-priority instructions override it.",
-      );
-    }
-    lines.push("");
-    for (const file of validContextFiles) {
-      lines.push(`## ${file.path}`, "", file.content, "");
+  // ── Project Context (skip in orchestrator — no need for file context) ──
+  if (!isOrchestrator) {
+    const contextFiles = params.contextFiles ?? [];
+    const validContextFiles = contextFiles.filter(
+      (file) => typeof file.path === "string" && file.path.trim().length > 0,
+    );
+    if (validContextFiles.length > 0) {
+      const hasSoulFile = validContextFiles.some((file) => {
+        const normalizedPath = file.path.trim().replace(/\\/g, "/");
+        const baseName = normalizedPath.split("/").pop() ?? normalizedPath;
+        return baseName.toLowerCase() === "soul.md";
+      });
+      lines.push("# Project Context", "", "The following project context files have been loaded:");
+      if (hasSoulFile) {
+        lines.push(
+          "If SOUL.md is present, embody its persona and tone. Avoid stiff, generic replies; follow its guidance unless higher-priority instructions override it.",
+        );
+      }
+      lines.push("");
+      for (const file of validContextFiles) {
+        lines.push(`## ${file.path}`, "", file.content, "");
+      }
     }
   }
 

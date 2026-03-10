@@ -709,7 +709,9 @@ export async function runEmbeddedAttempt(
       },
     });
     const isDefaultAgent = sessionAgentId === defaultAgentId;
-    const promptMode = resolvePromptModeForSession(params.sessionKey);
+    const basePromptMode = resolvePromptModeForSession(params.sessionKey);
+    // In orchestrator mode, override to strip built-in tool sections from the prompt
+    const promptMode = params.agenticMode ? "orchestrator" : basePromptMode;
     const docsPath = await resolveOpenClawDocsPath({
       workspaceDir: effectiveWorkspace,
       argv1: process.argv[1],

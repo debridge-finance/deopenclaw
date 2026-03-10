@@ -1,4 +1,9 @@
 import crypto from "node:crypto";
+import {
+  buildAcppRoster,
+  buildAcppOrchestratorRoster,
+  hasAcppConnectedAgents,
+} from "../../acpp/acpp-roster.js";
 import { resolveSessionAuthProfileOverride } from "../../agents/auth-profiles/session-override.js";
 import type { ExecToolDefaults } from "../../agents/bash-tools.js";
 import {
@@ -341,6 +346,15 @@ export async function runPreparedReply(
   if (queuedSystemPrompt) {
     extraSystemPromptParts.push(queuedSystemPrompt);
   }
+
+  // Orchestrator mode: activate when ACPP agents are connected or user explicitly uses [agentic]
+  const isAgenticExplicit = /^\[agentic\]/i.test((ctx.Body ?? "").trim());
+  const hasAgents = hasAcppConnectedAgents();
+  const isOrchestratorMode = isAgenticExplicit || hasAgents;
+  const acppRoster = isOrchestratorMode ? buildAcppOrchestratorRoster() : buildAcppRoster();
+  if (acppRoster) {
+    extraSystemPromptParts.push(acppRoster);
+  }
   prefixedBodyBase = appendUntrustedContext(prefixedBodyBase, sessionCtx.UntrustedContext);
   const threadStarterBody = ctx.ThreadStarterBody?.trim();
   const threadHistoryBody = ctx.ThreadHistoryBody?.trim();
@@ -514,9 +528,7 @@ export async function runPreparedReply(
       ownerNumbers: command.ownerList.length > 0 ? command.ownerList : undefined,
       extraSystemPrompt: extraSystemPromptParts.join("\n\n") || undefined,
       ...(isReasoningTagProvider(provider) ? { enforceFinalTag: true } : {}),
-      // Detect agentic mode from the original (unstripped) message body.
-      // The [agentic] prefix is injected by the UI and stripped after detection.
-      agenticMode: /^\[agentic\]/i.test((ctx.Body ?? "").trim()),
+      agenticMode: isOrchestratorMode,
     },
   };
 
