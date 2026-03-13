@@ -292,6 +292,85 @@ export class McpClientManager {
   }
 
   /**
+   * Subscribe to real-time task stream via agent's SSE endpoint.
+   * Yields stream entries as they arrive from the agent's Redis Stream.
+   *
+   * The agent exposes `GET /acpp/stream/:taskId` which returns an SSE stream
+   * of JSON-encoded events (text-delta, tool-call, step-finish, finish, error).
+   */
+  async *streamAgentTask(
+    agentId: string,
+    taskId: string,
+    signal?: AbortSignal,
+  ): AsyncGenerator<{ type: string; [key: string]: unknown }> {
+    const managed = this.clients.get(agentId);
+    if (!managed?.connected) {
+      throw new Error(`Agent ${agentId} is not connected`);
+    }
+
+    // Agent's SSE stream endpoint: same origin as MCP endpoint
+    const baseUrl = new URL(managed.mcpEndpoint);
+    const streamUrl = `${baseUrl.origin}/acpp/stream/${encodeURIComponent(taskId)}`;
+
+    const response = await fetch(streamUrl, {
+      method: "GET",
+      headers: { Accept: "text/event-stream" },
+      signal: signal ?? AbortSignal.timeout(600_000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Stream endpoint returned HTTP ${response.status}`);
+    }
+
+    const body = response.body;
+    if (!body) {
+      throw new Error("Empty stream response");
+    }
+
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+
+        for (const eventBlock of events) {
+          // Skip heartbeat comments
+          if (eventBlock.trim().startsWith(":")) {
+            continue;
+          }
+
+          let data = "";
+          for (const line of eventBlock.split("\n")) {
+            if (line.startsWith("data:")) {
+              data += line.slice(5).trim();
+            }
+          }
+          if (!data) {
+            continue;
+          }
+
+          try {
+            yield JSON.parse(data);
+          } catch {
+            this.log.debug(`streamAgentTask: skipping non-JSON SSE data: ${data.slice(0, 200)}`);
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  /**
    * Disconnect all clients. Called during shutdown.
    */
   disconnectAll(): void {
