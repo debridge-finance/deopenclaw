@@ -2,6 +2,16 @@ import type { AgentToolUpdateCallback } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import type { McpClientManager, McpToolDefinition } from "./mcp-client-manager.js";
 
+/** Timing configuration for task streaming and polling. */
+export const ACPP_PROXY_CONFIG = {
+  /** Max time to wait for an SSE stream before aborting (ms). */
+  MAX_STREAM_MS: 10 * 60 * 1000,
+  /** Interval between poll requests when SSE is unavailable (ms). */
+  POLL_INTERVAL_MS: 5_000,
+  /** Max time to poll before returning a timeout error (ms). */
+  MAX_POLL_MS: 10 * 60 * 1000,
+} as const;
+
 /**
  * Creates proxy tools for an ACPP agent's MCP tools.
  * Each proxy tool wraps a `tools/call` RPC through the {@link McpClientManager}.
@@ -73,9 +83,8 @@ export async function streamTaskResult(
   taskId: string,
   onUpdate?: AgentToolUpdateCallback,
 ): Promise<string> {
-  const MAX_STREAM_MS = 10 * 60 * 1000;
   const streamAbort = new AbortController();
-  const streamTimeout = setTimeout(() => streamAbort.abort(), MAX_STREAM_MS);
+  const streamTimeout = setTimeout(() => streamAbort.abort(), ACPP_PROXY_CONFIG.MAX_STREAM_MS);
 
   let accumulatedText = "";
   let streamWorked = false;
@@ -136,12 +145,10 @@ export async function pollTaskResult(
   agentId: string,
   taskId: string,
 ): Promise<string> {
-  const POLL_INTERVAL_MS = 5_000;
-  const MAX_POLL_MS = 5 * 60 * 1000;
   const start = Date.now();
 
-  while (Date.now() - start < MAX_POLL_MS) {
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+  while (Date.now() - start < ACPP_PROXY_CONFIG.MAX_POLL_MS) {
+    await new Promise((r) => setTimeout(r, ACPP_PROXY_CONFIG.POLL_INTERVAL_MS));
     try {
       const poll = await clientManager.callAgentTool(agentId, "acpp_get_task_result", { taskId });
       const pollText = poll.content
