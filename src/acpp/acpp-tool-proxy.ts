@@ -1,3 +1,4 @@
+import type { AgentToolUpdateCallback } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import type { McpClientManager, McpToolDefinition } from "./mcp-client-manager.js";
 
@@ -33,7 +34,7 @@ export function createAcppProxyTools(
         _toolCallId: string,
         rawParams: Record<string, unknown>,
         _signal?: AbortSignal,
-        _onUpdate?: unknown,
+        onUpdate?: AgentToolUpdateCallback,
       ) => {
         // Normalize params: LLMs sometimes send nested objects as JSON strings.
         // Parse them back so the agent receives real objects as the schema expects.
@@ -44,40 +45,11 @@ export function createAcppProxyTools(
         const textParts = result.content.filter((c) => c.type === "text").map((c) => c.text);
         let text = textParts.join("\n") || "No output";
 
-        // For acpp_assign_task: auto-poll for task result instead of returning "accepted"
+        // For acpp_assign_task: stream task progress via SSE, fallback to polling
         if (mcpTool.name === "acpp_assign_task" && !result.isError) {
           const taskId = params.taskId as string | undefined;
           if (taskId) {
-            const POLL_INTERVAL_MS = 5_000;
-            const MAX_POLL_MS = 5 * 60 * 1000; // 5 minutes
-            const start = Date.now();
-
-            while (Date.now() - start < MAX_POLL_MS) {
-              await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-
-              try {
-                const poll = await clientManager.callAgentTool(agentId, "acpp_get_task_result", {
-                  taskId,
-                });
-                const pollText = poll.content
-                  .filter((c) => c.type === "text")
-                  .map((c) => c.text)
-                  .join("\n");
-
-                // Parse the result to check status
-                try {
-                  const parsed = JSON.parse(pollText);
-                  if (parsed.status === "completed" || parsed.status === "failed") {
-                    text = pollText;
-                    break;
-                  }
-                } catch {
-                  // Non-JSON response — keep polling
-                }
-              } catch {
-                // Poll failed — keep trying
-              }
-            }
+            text = await streamTaskResult(clientManager, agentId, taskId, onUpdate);
           }
         }
 
@@ -88,6 +60,132 @@ export function createAcppProxyTools(
       },
     };
   });
+}
+
+/**
+ * Subscribe to agent's task stream and emit onUpdate for each chunk.
+ * Falls back to polling if SSE endpoint is unavailable.
+ * Returns the final task result text.
+ */
+export async function streamTaskResult(
+  clientManager: McpClientManager,
+  agentId: string,
+  taskId: string,
+  onUpdate?: AgentToolUpdateCallback,
+): Promise<string> {
+  const MAX_STREAM_MS = 10 * 60 * 1000;
+  const streamAbort = new AbortController();
+  const streamTimeout = setTimeout(() => streamAbort.abort(), MAX_STREAM_MS);
+
+  let accumulatedText = "";
+  let streamWorked = false;
+
+  try {
+    for await (const event of clientManager.streamAgentTask(agentId, taskId, streamAbort.signal)) {
+      streamWorked = true;
+
+      switch (event.type) {
+        case "text-delta": {
+          accumulatedText += (event.text as string) ?? "";
+          // Emit partial text to PI runner → WebSocket → Slack/Telegram
+          onUpdate?.({
+            content: [{ type: "text", text: accumulatedText }],
+            details: { agentId, taskId, phase: "streaming" },
+          });
+          break;
+        }
+        case "tool-call": {
+          const toolName = event.toolName as string;
+          onUpdate?.({
+            content: [{ type: "text", text: `🔧 ${agentId}: ${toolName}...` }],
+            details: { agentId, taskId, phase: "tool-call", toolName },
+          });
+          break;
+        }
+        case "step-finish": {
+          const stepIndex = event.stepIndex as number;
+          const elapsed = event.elapsed as string;
+          onUpdate?.({
+            content: [{ type: "text", text: `📍 Step ${stepIndex} (${elapsed})` }],
+            details: { agentId, taskId, phase: "step", stepIndex },
+          });
+          break;
+        }
+        case "finish":
+        case "error":
+          break; // Stream ended — fall through to final poll
+      }
+    }
+  } catch {
+    // SSE endpoint unavailable or network error — fallback to polling
+    if (!streamWorked) {
+      clearTimeout(streamTimeout);
+      return await pollTaskResult(clientManager, agentId, taskId);
+    }
+  } finally {
+    clearTimeout(streamTimeout);
+  }
+
+  // Get final structured result after stream ends
+  return await fetchFinalResult(clientManager, agentId, taskId, accumulatedText);
+}
+
+/** Fallback: original polling loop for agents without SSE streaming. */
+export async function pollTaskResult(
+  clientManager: McpClientManager,
+  agentId: string,
+  taskId: string,
+): Promise<string> {
+  const POLL_INTERVAL_MS = 5_000;
+  const MAX_POLL_MS = 5 * 60 * 1000;
+  const start = Date.now();
+
+  while (Date.now() - start < MAX_POLL_MS) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    try {
+      const poll = await clientManager.callAgentTool(agentId, "acpp_get_task_result", { taskId });
+      const pollText = poll.content
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("\n");
+      try {
+        const parsed = JSON.parse(pollText);
+        if (parsed.status === "completed" || parsed.status === "failed") {
+          return pollText;
+        }
+      } catch {
+        /* continue polling */
+      }
+    } catch {
+      /* continue polling */
+    }
+  }
+
+  return JSON.stringify({ status: "failed", error: "Polling timeout" });
+}
+
+/** Get final structured result via acpp_get_task_result. */
+export async function fetchFinalResult(
+  clientManager: McpClientManager,
+  agentId: string,
+  taskId: string,
+  fallbackText: string,
+): Promise<string> {
+  try {
+    const finalPoll = await clientManager.callAgentTool(agentId, "acpp_get_task_result", {
+      taskId,
+    });
+    return (
+      finalPoll.content
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("\n") || fallbackText
+    );
+  } catch {
+    return fallbackText
+      ? JSON.stringify({ status: "completed", result: { summary: fallbackText } })
+      : JSON.stringify({ status: "failed", error: "Could not retrieve final result" });
+  }
 }
 
 /**
